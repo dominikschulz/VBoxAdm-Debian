@@ -53,16 +53,17 @@ esac
 
 update-rc.d vboxadm defaults > /dev/null
 
-cd /tmp
 # make sure that the user exists. the simplest portable way to check that
 # is to chown something.
-makedir vboxadm root:root 700
+makedir /tmp/vboxadm root:root 700
 chgrp vboxadm vboxadm 2>/dev/null ||
   addgroup --system vboxadm
 chown vboxadm vboxadm 2>/dev/null ||
   adduser --system --home /var/lib/vboxadm --no-create-home --ingroup vboxadm --disabled-password vboxadm
 
 rm -r /tmp/vboxadm
+
+db_version 2.0
 
 # Configure webserver
 db_get vboxadm/reconfigure-webserver
