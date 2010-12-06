@@ -10,7 +10,7 @@ Homepage: http://vboxadm.gauner.org/
 
 Package: vboxadm
 Architecture: all
-Depends: perl (>= 5.8), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libcgi-application-perl, libcgi-application-basic-plugin-bundle-perl, libcgi-application-extra-plugin-bundle-perl, libmail-sender-perl, famfamfam-silk-png, libtemplate-perl, libmime-encwords-perl, libhtml-clean-perl, libtemplate-perl, libcrypt-generatepassword-perl, libdata-password-perl, adduser, lighttpd | apache2 | httpd-cgi, libnet-server-perl
+Depends: perl (>= 5.8), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libcgi-application-perl, libcgi-application-basic-plugin-bundle-perl, libcgi-application-extra-plugin-bundle-perl, libmail-sender-perl, famfamfam-silk-png, libtemplate-perl, libmime-encwords-perl, libhtml-clean-perl, libtemplate-perl, libcrypt-generatepassword-perl, libdata-password-perl, adduser, lighttpd | apache2 | httpd-cgi, libnet-server-perl, debconf
 Recommends: postfix-mysql, mysql-server 
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
