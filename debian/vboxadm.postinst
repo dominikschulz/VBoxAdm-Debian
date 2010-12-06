@@ -16,7 +16,8 @@ lighttpd_install() {
       ln -s ../../vboxadm/lighttpd.conf /etc/lighttpd/conf-available/50-vboxadm.conf
       lighty-enable-mod vboxadm cgi
     else
-      echo "Lighttpd not installed, skipping"
+      #echo "Lighttpd not installed, skipping"
+      # No output with debconf, use debconf output
     fi
   fi
 }
