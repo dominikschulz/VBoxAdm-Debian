@@ -1,0 +1,291 @@
+#!/usr/bin/perl
+package VBoxAdm::SmtpProxy;
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+use Config::Std;
+
+use VBoxAdm::SmtpProxy '@VERSION@';
+
+my $syntax = "syntax: $0 [--verbose] [--config=<FILE>]\n";
+
+my ( $conffile_used, @hooks, %hook, %config, );
+
+# Valid config file locations to try
+my @conffile_locations = qw(
+  vboxadm.conf
+  conf/vboxadm.conf
+  /etc/vboxadm.conf
+  /etc/vboxadm/vboxadm.conf
+  /etc/postfix/vboxadm.conf
+);
+GetOptions(
+    'verbose|v+' => \$config{'verbose'},
+    'dry|d!'     => \$config{'dry'},
+    'no-fork!'   => \$config{'no-fork'},
+
+    # shift removes name of the option (config) and leaves the value for unshift
+    # unshift prepends to the list of valid config files so it is tried first
+    'config=s' => sub { shift; unshift( @conffile_locations, @_ ); },
+) or die $syntax;
+
+# Try all config file locations
+foreach my $loc (@conffile_locations) {
+    if ( -r $loc ) {
+        $conffile_used = $loc;
+        read_config $loc => %config;
+        last;
+    }
+}
+
+# Determine options
+my $dbhost = $config{'smtpproxy'}{'dbhost'} || $config{'default'}{'dbhost'} || 'localhost';
+my $dbuser = $config{'smtpproxy'}{'dbuser'} || $config{'default'}{'dbuser'} || 'vboxadm';
+my $dbpass = $config{'smtpproxy'}{'dbpass'} || $config{'default'}{'dbpass'} || 'vboxadm';
+my $dbport = $config{'smtpproxy'}{'dbport'} || $config{'default'}{'dbport'} || 3306;
+my $dbdb   = $config{'smtpproxy'}{'dbdb'}   || $config{'default'}{'dbdb'}   || 'vboxadm';
+my $listen = $config{'smtpproxy'}{'listen'} || 'localhost:10025';
+my $connect           = $config{'smtpproxy'}{'connect'}           || 'localhost:10026';
+my $pidfile           = $config{'smtpproxy'}{'pidfile'}           || '/var/run/vboxadm-smtpproxy.pid';
+my $user              = $config{'smtpproxy'}{'user'}              || 'vboxadm';
+my $group             = $config{'smtpproxy'}{'group'}             || 'vboxadm';
+my $childtimeout      = $config{'smtpproxy'}{'childtimeout'}      || 60;
+my $min_servers       = $config{'smtpproxy'}{'min_servers'}       || 20;
+my $min_spare_servers = $config{'smtpproxy'}{'min_spare_servers'} || 10;
+my $max_servers       = $config{'smtpproxy'}{'max_servers'}       || 80;
+my $max_spare_servers = $config{'smtpproxy'}{'max_spare_servers'} || 20;
+my $max_requests      = $config{'smtpproxy'}{'max_requests'}      || 250;
+my $max_msg_size      = $config{'smtpproxy'}{'max_msg_size'}      || 25;                                 # MB
+$max_msg_size *= ( 1024 * 1024 );
+my $sa_max_msg_size = $config{'smtpproxy'}{'sa_max_msg_size'} || 10;                                     # MB
+$sa_max_msg_size *= ( 1024 * 1024 );                                                                     # convert to bytes
+my $sa_timeout    = $config{'smtpproxy'}{'sa_timeout'}          || 30;                                   # seconds
+my $sa_local_only = $config{'smtpproxy'}{'sa_local_tests_only'} || 0;
+my $nsloglevel = $config{'smtpproxy'}{'nsloglevel'} // 2;
+my $logsock = $config{'smtpproxy'}{'logsock'} || 'unix';
+my $background = $config{'no-fork'} ? 0 : 1;
+
+# Parse listen and connect options
+my ( $srcaddr, $srcport ) = split /:/, $listen;
+my ( $dstaddr, $dstport ) = split /:/, $connect;
+die $syntax unless defined($srcport) and defined($dstport);
+
+# Create a new SA instance
+my $sa = Mail::SpamAssassin->new(
+    {
+        'dont_copy_prefs'  => 1,
+        'local_tests_only' => $sa_local_only,
+    }
+);
+
+# Don't do lazy loading/compiling of submodules. This is
+# recommended for fork()ing servers.
+$sa->compile_now();
+
+# specify hosts and ports
+my $server = bless {
+    server => {
+
+        # Binding
+        host  => $srcaddr,
+        port  => $srcport,
+        proto => 'tcp',
+
+        # Logging
+        log_file        => 'Sys::Syslog',
+        log_level       => $nsloglevel,
+        syslog_logsock  => $logsock,
+        syslog_ident    => 'vboxadm-smtpproxy',
+        syslog_facility => 'mail',
+
+        # Misc
+        background => $background,
+        pid_file   => $pidfile,
+        user       => $user,
+        group      => $group,
+
+        # PreFork
+        min_servers       => $min_servers,
+        min_spare_servers => $min_spare_servers,
+        max_servers       => $max_servers,
+        max_spare_servers => $max_spare_servers,
+        max_requests      => $max_requests,
+    },
+    vbox => {
+        relayhost       => $dstaddr,
+        relayport       => $dstport,
+        dbh             => undef,
+        childtimeout    => $childtimeout,
+        sa              => $sa,
+        sa_max_msg_size => $sa_max_msg_size,
+        sa_timeout      => $sa_timeout,
+        max_msg_size    => $max_msg_size,
+        dry             => $config{'dry'},
+
+        dbhost => $dbhost,
+        dbport => $dbport,
+        dbuser => $dbuser,
+        dbpass => $dbpass,
+        dbdb   => $dbdb,
+    },
+  },
+  'VBoxAdm::SmtpProxy';
+
+# Test DB connection before starting server
+if ( $server->db_connect() ) {
+    $server->{vbox}->{dbh}->disconnect();
+}
+else {
+    die("Could not connect to database!");
+}
+$server->run();
+
+exit 1;
+
+__END__
+
+=head1 NAME
+
+smtpproxy - Spam Filtering SMTP-Proxy for VBoxAdm
+
+=head1 VERSION
+
+This documentation refers to VBoxAdm smtp-proxy version @VERSION@
+built on @BUILDDATE@.
+
+=head1 SYNOPSIS
+
+    $> ./smtpproxy.pl
+
+=head1 SCHEMA
+
+ Internet -> Postfix1 (Client) -> smtpproxy -> Postfix2 (Server)
+
+=head1 DESCRIPTION
+
+The smtp-proxy listens on the port configured in its configuration file
+and sends the command it recieves on the the SMTP-Server specified also
+in its configuration file. The SMTP commands and replies from the server
+are passed on unmodified until the client send the end-of-data command
+(a single dot "." on a line of its own). The the proxy first checks
+the message size against the max message size for the recipients and
+if that test passes it checks the spam rating. If SpamAssassin reports
+a spam rating above the lowest spam kill score of all recipients the
+message if blocked at SMTP level (no bounce is generated on our side).
+
+All mails are rewritten while they pass through this proxy so even clean mails
+get SpamAssassin headers for later inspection.
+
+You can control the ressource usage of this application by tuning the
+variables min_server, max_servers et. al. See the documentation
+of Net::Server::PreFork for more details. Basically this application
+will create a SpamAssasin instance, precompile the rules and fork
+of as many children as specified. These children live for some time,
+handle the requests the parent receives and die when they've done
+enough work. The the parent will spawn a new children. If there a too much
+incoming requests the server will spawn new children until max_servers
+if reached. This is very much like the behaviour of the Apache HTTPD
+prefork worker.
+
+=head1 WARNING
+
+This application is designed as an intermediate component. Do not place it
+in an exposed position where everyone can talk to it. Put it between
+a sandwich of two postfix instances as suggested by the sample
+configuration distributed with this application.
+
+=head1 PERFORMANCE NOTES
+
+This application is designed with some very specific assumptions in mind:
+Executing perl is very expensive, forking perl is somewhat expensive
+(although highly optimized), messages will vary in size and memory usage
+is more imporant than CPU-utilization. It uses apache-style preforking
+(through Net::Server::PreFork) to reduce the need to fork perl instances.
+Controlled child restarts reduce the effect of resource leaks in its
+children. The message passed through is bufferd in an unlinked tempfile
+in /tmp, which SHOULD by a tmpfs large enough to hold max_servers * max_msg_size
+of data. This prevents the allocation overhead associated with large strings
+and ensures that space will be returned to the OS as soon as possible.
+
+=head1 PARAMETERS
+
+=head2 verbose
+Be more verbose.
+
+=head2 dry
+Do not acutually reject any messages. Only log to syslog.
+
+=head2 config
+Sepcify an alternate config path.
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+The configuration file should be place either in /etc/vboxadm.conf or
+in /etc/postfix/vboxadm.conf. This is a common configuration file
+for the whole suite of VBoxAdm applications. Each part of this suite
+has its own section in the config file and all use the values
+from the default section when appropriate.
+
+=head2 default
+The default section should contain at least the database configuration.
+
+dbuser - The user used to connect to the MySQL database.
+dbpass - This users password.
+dbdb - The db used by this application.
+dbhost - The MySQL database host, usually localhost.
+
+=head2 smtpproxy
+
+listen - Hostname:Port - Listen on this hostname (or IP) and port for
+incoming SMTP dialogs.
+connect - Hostname:Port - Connect to this hostname (or IP) and port
+to forward the SMTP.
+pidfile - This applications pidfile.
+user - The user this application should run as.
+group - The group this application should run as.
+max_msg_size - The overall max. message size.
+sa_max_msg_size - The max. size of messages SpamAssassin will scan.
+sa_timeout - The SpamAssassin scan timeout.
+min_servers - Start at least this much children.
+max_servers - Run no more than this number of children.
+min_spare_servers - Min. spare Children.
+max_spare_servers - Max. spare Children.
+max_requests - Each children will complete this much requests and than exit.
+
+=head1 DEPENDENCIES
+
+VBoxAdm::Utils, VBoxAdm::SmtpProxy, MSDW::SMTP::Client, MSDW::SMTP::Server.
+
+=head1 INCOMPATIBILITIES
+
+None known.
+
+=head1 BUGS AND LIMITATIONS
+
+There are no known bugs in this module.
+Please report problems to Dominik Schulz (dominik.schulz@gauner.org)
+Patches are welcome.
+
+=head1 AUTHOR
+
+Dominik Schulz (dominik.schulz@gauner.org)
+
+=head1 LICENCE AND COPYRIGHT
+
+This implementation was previously based on smtpproxy but switched to
+Net::Server::PreFork later. Large parts of this code are based on the ideas
+of SpamPD, which is itself based on smtpprox, but all code,
+except MSDW::SMTP::*, was written by myself.
+
+Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+=cut

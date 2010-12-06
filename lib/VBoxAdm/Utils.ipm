@@ -1,0 +1,288 @@
+package VBoxAdm::Utils;
+
+use strict;
+use warnings;
+
+require Exporter;
+our @ISA = qw(Exporter);
+
+#our @EXPORT    = qw(); # SHOULD be empty and not defined!
+our @EXPORT_OK   = qw();
+our %EXPORT_TAGS = ( ALL => [@EXPORT_OK], );
+our $VERSION     = '@VERSION@';
+
+############################################
+# Usage      : ????
+# Purpose    : ????
+# Returns    : ????
+# Parameters : ????
+# Throws     : no exceptions
+# Comments   : none
+# See Also   : n/a
+sub extract_recipients {
+    my $recipients = shift;
+
+    my @emails = ();
+
+    my @recps = split( /\s*,\s*/, $recipients );
+    foreach my $recp (@recps) {
+        if ( $recp =~ m/<([^>@]+@[^>]+)>/ ) {
+
+            # should match '<user@domain.tld>',
+            # Name <user@doman.tld>, etc.
+            my $email = lc($1);
+            push( @emails, $email );
+        }
+        elsif ( $recp =~ m/^([^<@]+@\S+)$/ ) {
+
+            # user@domain.tld
+            my $email = lc($1);
+            push( @emails, $email );
+        }
+    }
+    return @emails;
+}
+
+############################################
+# Usage      : my $content = MTK::Common::slurp($file);
+# Purpose    : Read a whole file in a string
+# See Also   : Perl6::Slurp
+sub slurp {
+    my $file = shift;
+    my $opts = shift || {};
+
+    if ( -f $file && open( my $FH, "<", $file ) ) {
+        my $buf = "";
+        while ( my $line = <$FH> ) {
+            $buf .= $line;
+        }
+        close($FH);
+        if ( $opts->{Chomp} ) {
+            chomp($buf);
+        }
+        return $buf;
+    }
+    else {
+        return;
+    }
+}
+
+############################################
+# Usage      : MTK::Common->sendmail($envelope-from,$message);
+# Purpose    : Send a text/plain mail via /usr/sbin/sendmail
+# Returns    : true on success
+# Parameters : From, To, Subject and Message
+# Throws     : no exceptions
+# Comments   : none
+# See Also   : n/a
+sub sendmail {
+    my $from     = shift;
+    my $msg      = shift;
+    my $sendmail = "/usr/sbin/sendmail";
+    if ( open( my $SENDMAIL, "|-", "$sendmail -t -f $from" ) ) {
+        print $SENDMAIL $msg;
+        if ( close($SENDMAIL) ) {
+            return 1;
+        }
+        else {
+            return;
+        }
+    }
+    else {
+        print STDERR "Error. Can not execute sendmail.\n";
+        return;
+    }
+}
+
+############################################
+# Usage      : my $trimmed_str = MTK::Common->trim()
+# Purpose    : Remove leading and trailing whitespaces from a string
+# Returns    : the trimmed string
+# Parameters : a string
+# Throws     : no exceptions
+# Comments   : none
+# See Also   : n/a
+# Remove leading and trailing whitespaces
+sub trim {
+    my $string = shift;
+    if ($string) {
+        $string =~ s/^\s+//;
+        $string =~ s/\s+$//;
+    }
+    return $string;
+}
+
+############################################
+# Usage      : my $trimmed_str = MTK::Common->trim()
+# Purpose    : Same as trim, additionally removes on-line comments (everything after a #)
+# Returns    : the trimmed string
+# Parameters : a string
+# Throws     : no exceptions
+# Comments   : none
+# See Also   : n/a
+# as well as on-line comments
+sub trim2 {
+    my $string = shift;
+    if ($string) {
+
+        # remove any trailing comments first ...
+        $string =~ s/#.*//g;
+
+        # ... then any leading wsps ...
+        $string =~ s/^\s+//;
+
+        # ... then any trailing wsps.
+        $string =~ s/\s+$//;
+
+        # if the comments are removed last there may be garbage left
+        # between the end of the value and the start of the comment
+
+        # alternate one line reg-exp pattern:
+        # $string =~ s/^\s*(.*?)\s*(#.*)?$/$1/s;
+        return $string;
+    }
+}
+
+{
+
+    # RFC2822 email syntax
+    my $local_part = qr"[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"i;
+    my $domain     = qr"(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:[A-Z]{2}|com|org|net|gov|mil|biz|info|mobi|name|aero|jobs|museum)"i;
+
+    sub is_valid_address_rfc822 {
+        my $addy = shift;
+        return $addy =~ m/^$local_part\@$domain$/;
+    }
+
+    sub is_valid_addresses_rfc822 {
+        my $addys    = shift;
+        my @addrs    = split( /\s*,\s*/, $addys );
+        my $count_ok = 0;
+        foreach my $addr (@addrs) {
+            if ( is_valid_address_rfc822($addr) ) {
+                $count_ok++;
+            }
+            else {
+
+                # at least one invalid address found!
+                return;
+            }
+        }
+        return $count_ok;
+    }
+
+    sub is_valid_localpart_rfc822 {
+        my $addy = shift;
+        print "\tis_valid_localpart_rfc822: $addy\n";
+        return $addy =~ m/^$local_part$/;
+    }
+
+    sub is_valid_domain_rfc822 {
+        my $addy = shift;
+        return $addy =~ m/^$domain$/;
+    }
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+VBoxAdm::Utils - Common Mail Handling utils.
+
+=head1 VERSION
+
+The initial template usually just has:
+This documentation refers to VBoxAdm::Utils version @VERSION@
+built on @BUILDDATE@.
+
+=head1 SYNOPSIS
+
+    use VBoxAdm::Utils;
+		my @recipients = VBoxAdm::Utils::extract_recipients($recipients_string);
+		foreach my $r (@recipients) {
+			if(VBoxAdm::Utils::is_valid_address_rfc822($r)) {
+				print "Valid Email: $r\n";
+			}
+		}
+
+=head1 DESCRIPTION
+
+This module offers various methods for the VBoxAdm suite.
+
+=head1 SUBROUTINES/METHODS
+
+=head2 extract_recipients
+
+TBD
+
+=head2 is_valid_address_rfc822
+
+Tests if the given string is a valid (wrt. RFC822)
+email address.
+
+=head2 is_valid_adresses_rfc822
+
+Tests if the given string contains one or more valid (wrt. RFC822)
+email addresses.
+
+=head2 is_valid_domain_rfc822
+
+Tests if the given string is a valid (wrt. RFC822)
+domain.
+
+=head2 is_valid_localpart_rfc822
+
+Tests if the given string is a valid (wrt. RFC822)
+local part.
+
+=head2 sendmail
+
+Send a mail via sendmail.
+
+=head2 slurp
+
+Read in a whole file at once.
+
+=head2 trim
+
+Remove leading and trailing whitespaces.
+
+=head2 trim2
+
+Remove leading and trailing whitespaces as well as on-line comments.
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+None.
+
+=head1 DEPENDENCIES
+
+None.
+
+=head1 INCOMPATIBILITIES
+
+None known.
+
+=head1 BUGS AND LIMITATIONS
+There are no known bugs in this module.
+Please report problems to Dominik Schulz (dominik.schulz@gauner.org)
+Patches are welcome.
+
+=head1 AUTHOR
+
+Dominik Schulz (dominik.schulz@gauner.org)
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+=cut

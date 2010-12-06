@@ -1,0 +1,2014 @@
+package VBoxAdm::Frontend;
+
+# TODO use require ssl
+
+use base 'CGI::Application';
+
+use strict;
+use warnings;
+
+# Neede for database connection
+use CGI::Application::Plugin::DBH (qw/dbh_config dbh/);
+
+use CGI::Application::Plugin::Redirect;
+
+# http://search.cpan.org/~ceeshek/CGI-Application-Plugin-Session-1.03/lib/CGI/Application/Plugin/Session.pm
+use CGI::Application::Plugin::Session;
+
+# access with $self->session->param();
+
+# http://search.cpan.org/~ceeshek/CGI-Application-Plugin-TT-1.05/lib/CGI/Application/Plugin/TT.pm
+use CGI::Application::Plugin::TT;
+
+# http://search.cpan.org/~dhorne/CGI-Application-Plugin-RequireSSL-0.04/lib/CGI/Application/Plugin/RequireSSL.pm
+use CGI::Application::Plugin::RequireSSL;
+
+# http://search.cpan.org/~silasmonk/CGI-Application-Plugin-Authentication-0.18/lib/CGI/Application/Plugin/Authentication.pm
+use CGI::Application::Plugin::Authentication;
+
+use Config::Std;
+use Crypt::GeneratePassword;
+use Data::Password;
+
+use VBoxAdm::Utils '@VERSION@';
+use VBoxAdm::L10N '@VERSION@';
+
+#use VBoxAdm::Frontend::Admin '@VERSION@';
+
+our $VERSION = '@VERSION@';
+
+############################################
+# Usage      : ????
+# Purpose    : ????
+# Returns    : ????
+# Parameters : ????
+# Throws     : no exceptions
+# Comments   : none
+# See Also   : n/a
+sub setup {
+    my $self = shift;
+    $self->start_mode('public_login');
+    $self->run_modes(
+
+        #
+        # Public
+        #
+        'public_login'          => 'show_login',
+        'public_create_captcha' => 'show_captcha',
+
+        #
+        # Private
+        #
+
+        # General
+        'welcome' => 'show_welcome',
+
+        # Domains
+        'domains'       => 'show_domains',
+        'create_domain' => 'show_create_domain',
+        'add_domain'    => 'show_add_domain',
+        'remove_domain' => 'show_remove_domain',
+
+        # no need for 'edit_domain', we can only change is_active anyway
+        'update_domain' => 'show_update_domain',
+
+        # Domain Aliases
+        'domain_aliases'      => 'show_domain_aliases',
+        'create_domain_alias' => 'show_create_domain_alias',
+        'add_domain_alias'    => 'show_add_domain_alias',
+        'remove_domain_alias' => 'show_remove_domain_alias',
+        'edit_domain_alias'   => 'show_edit_domain_alias',
+        'update_domain_alias' => 'show_update_domain_alias',
+
+        # Aliases
+        'aliases'      => 'show_aliases',
+        'create_alias' => 'show_create_alias',
+        'add_alias'    => 'show_add_alias',
+        'remove_alias' => 'show_remove_alias',
+        'edit_alias'   => 'show_edit_alias',
+        'update_alias' => 'show_update_alias',
+
+        # Mailboxes
+        'mailboxes'      => 'show_mailboxes',
+        'create_mailbox' => 'show_create_mailbox',
+        'add_mailbox'    => 'show_add_mailbox',
+        'remove_mailbox' => 'show_remove_mailbox',
+        'edit_mailbox'   => 'show_edit_mailbox',
+        'update_mailbox' => 'show_update_mailbox',
+
+        # Log
+        'log' => 'show_log',
+
+        # Admins
+        'admins' => 'show_admins',
+    );
+
+    # Authentication
+    $self->authen->config(
+        DRIVER => [
+            'DBI',
+            TABLES      => [ 'mailboxes', 'domains' ],
+            CONSTRAINTS => {
+                "CONCAT(mailboxes.local_part,'\@',domains.name)" => '__CREDENTIAL_1__',
+                'mailboxes.password'                             => '__CREDENTIAL_2__',
+                'mailboxes.is_active'                            => '1',
+                'domains.is_active'                              => '1',
+
+                # WARNING: This contraint relies on an implementation detail of Plugin::Authentication!
+                # This is bad style, but there is no other way right now.
+                '(mailboxes.is_superadmin OR mailboxes.is_domainadmin) AND 1' => '1',
+            },
+        ],
+        LOGOUT_RUNMODE      => 'public_login',
+        LOGIN_RUNMODE       => 'public_login',
+        POST_LOGIN_CALLBACK => \&post_login_callback,
+    );
+
+    # only enable authen if called as CGI
+    if ( !$self->is_shell() ) {
+        $self->authen->protected_runmodes(qr/^(?!public_)/);
+    }
+
+    #
+    # Configuration
+    #
+    # Valid config file locations to try
+    my @conffile_locations = qw(
+      vboxadm.conf
+      conf/vboxadm.conf
+      /etc/vboxadm/vboxadm.conf
+    );
+
+    my ( %config, $conffile_used );
+
+    # Try all config file locations
+    foreach my $loc (@conffile_locations) {
+        if ( -r $loc ) {
+            $conffile_used = $loc;
+            read_config $loc => %config;
+            last;
+        }
+    }
+
+    #
+    # Database
+    #
+    my $user = $config{'default'}{'dbuser'} || 'root';
+    my $pass = $config{'default'}{'dbpass'} || 'root';
+    my $db   = $config{'default'}{'dbdb'}   || 'vboxadm';
+    my $port = $config{'default'}{'dbport'} || 3306;
+    my $host = $config{'default'}{'dbhost'} || 'localhost';
+    my $dsn  = "DBI:mysql:database=$db;user=$user;password=$pass;host=$host;port=$port";
+
+    # Connect to DBI database, same args as DBI->connect();
+    $self->dbh_config($dsn);
+
+    #
+    # L10N
+    #
+    $self->{lh} = VBoxAdm::L10N->get_handle();
+
+    #
+    # Templates
+    #
+    $self->tt_config(
+        TEMPLATE_OPTIONS => {
+            INCLUDE_PATH => [ 'tpl', '../tpl', '/usr/lib/vboxadm/tpl' ],
+            POST_CHOMP   => 1,
+            FILTERS      => {
+                'currency' => sub { sprintf( '%0.2f', @_ ) },
+
+                # dynamic filter factory, see TT manpage
+                'highlight' => [
+                    sub {
+                        my ( $context, $search ) = @_;
+
+                        return sub {
+                            my $str = shift;
+                            if ($search) {
+                                $str =~ s/($search)/<span style='background-color: lightgreen'>$1<\/span>/g;
+                            }
+                            return $str;
+                          }
+                    },
+                    1
+                ],
+
+                #'l10n' => sub { return $self->{lh}->maketext(@_); },
+
+                'l10n' => [
+                    sub {
+                        my ( $context, @args ) = @_;
+
+                        return sub {
+                            my $str = shift;
+                            return $self->{lh}->maketext( $str, @args );
+                          }
+                    },
+                    1,
+                ],
+            }
+        }
+    );
+
+}
+
+sub teardown {
+    my $self = shift;
+
+    # Disconnect when done
+    $self->dbh->disconnect();
+}
+
+#
+# CGI::Application Hooks
+#
+sub cgiapp_init() {
+    my $self = shift;
+    $self->query->charset('UTF-8');
+}
+
+#
+# Template::Toolkit Hooks
+#
+sub tt_post_process {
+    my $self    = shift;
+    my $htmlref = shift;
+
+    # clean up the resulting HTML
+    require HTML::Clean;
+    my $h = HTML::Clean->new($htmlref);
+    $h->strip;
+    my $newref = $h->data;
+    $$htmlref = $$newref;
+    return;
+}
+
+sub tt_pre_process {
+    my ( $self, $file, $vars ) = @_;
+    $vars->{username}       = $self->authen->username;
+    $vars->{version}        = $VERSION;
+    $vars->{notify}         = $self->get_notify();
+    $vars->{is_superadmin}  = $self->is_superadmin();
+    $vars->{is_domainadmin} = $self->is_domainadmin();
+    return;
+}
+
+#
+# Misc. private Subs
+#
+sub log {
+    my $self = shift;
+    my $msg  = shift;
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    if ($msg) {
+        my $query = "INSERT INTO log (ts,msg) VALUES(NOW(),?)";
+        my $sth   = $dbh->prepare($query);
+        if ( $sth->execute($msg) ) {
+            $sth->finish();
+            return 1;
+        }
+        else {
+            $sth->finish();
+            return;
+        }
+    }
+    else {
+        return;
+    }
+}
+
+sub post_login_callback {
+    my $self = shift;
+
+    # setup users session, i.e. is he superadmin, domainadmin,
+    # get domain id, mailbox id, ip, ...
+    $self->get_user_details();
+    $self->log_login();
+}
+
+sub log_login {
+    my $self = shift;
+    return unless ( $self->authen->is_authenticated );
+    $self->log( "User " . $self->authen->username . " logged in." );
+    return 1;
+}
+
+# add entry to notify
+sub add_notify {
+    my $self   = shift;
+    my $msg    = shift;
+    my $notify = $self->session->param('notify');
+    $notify .= $msg . "\n";
+    $self->session->param( 'notify', $notify );
+    return 1;
+}
+
+# get and reset notify
+sub get_notify {
+    my $self   = shift;
+    my $notify = $self->session->param('notify');
+    $self->session->param( 'notify', '' );
+    return $notify;
+}
+
+# get notify (no reset)
+sub peek_notify {
+    my $self   = shift;
+    my $notify = $self->session->param('notify');
+    return $notify;
+}
+
+# is the script run from a shell?
+sub is_shell {
+    my $self = shift;
+    if ( $ENV{'DISPLAY'} && $ENV{'PS1'} && $ENV{'SHELL'} && $ENV{'USER'} ) {
+        if (   $ENV{'DOCUMENT_ROOT'}
+            || $ENV{'GATEWAY_INTERFACE'}
+            || $ENV{'HTTP_HOST'}
+            || $ENV{'REMOTE_ADDR'}
+            || $ENV{'REQUEST_METHOD'}
+            || $ENV{'SERVER_SOFTWARE'} )
+        {
+            return;
+        }
+        else {
+            return 1;
+        }
+    }
+    else {
+        return;
+    }
+}
+
+sub is_domainadmin {
+    my $self = shift;
+
+    if ( defined( $self->session->param('user_is_domainadmin') ) ) {
+        return $self->session->param('user_is_domainadmin');
+    }
+
+    my ( undef, undef, undef, $is_domainadmin ) = $self->get_user_details();
+
+    if ($is_domainadmin) {
+        return 1;
+    }
+    else {
+        return;
+    }
+}
+
+sub is_superadmin {
+    my $self = shift;
+
+    if ( defined( $self->session->param('user_is_superadmin') ) ) {
+        return $self->session->param('user_is_superadmin');
+    }
+
+    my ( undef, undef, $is_superadmin, undef ) = $self->get_user_details();
+
+    if ($is_superadmin) {
+        return 1;
+    }
+    else {
+        return;
+    }
+}
+
+sub get_user_details {
+    my $self = shift;
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    my $query = "SELECT m.id,m.domain_id,m.is_superadmin,m.is_domainadmin FROM ";
+    $query .= "mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE CONCAT(m.local_part,'\@',d.name) = ?";
+    my $sth = $dbh->prepare($query);
+    $sth->execute( $self->authen->username );
+    my ( $mailbox_id, $domain_id, $is_superadmin, $is_domainadmin ) = $sth->fetchrow_array();
+    $sth->finish();
+
+    $self->session->param( 'user_mailbox_id',     $mailbox_id );
+    $self->session->param( 'user_domain_id',      $domain_id );
+    $self->session->param( 'user_is_superadmin',  $is_superadmin );
+    $self->session->param( 'user_is_domainadmin', $is_domainadmin );
+
+    return ( $mailbox_id, $domain_id, $is_superadmin, $is_domainadmin );
+}
+
+sub get_users_domainid {
+    my $self = shift;
+
+    if ( defined( $self->session->param('user_domain_id') ) ) {
+        return $self->session->param('user_domain_id');
+    }
+
+    my ( undef, $domain_id, undef, undef ) = $self->get_user_details();
+
+    return $domain_id;
+}
+
+sub get_users_mailboxid {
+    my $self = shift;
+
+    if ( defined( $self->session->param('user_mailbox_id') ) ) {
+        return $self->session->param('user_mailbox_id');
+    }
+
+    my ( $mailbox_id, undef, undef, undef ) = $self->get_user_details();
+
+    return $mailbox_id;
+}
+
+sub get_domain_byid {
+    my $self      = shift;
+    my $domain_id = shift;
+
+    my $sql = "SELECT name FROM domains WHERE id = ?";
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    my $sth = $dbh->prepare($sql);
+    $sth->execute($domain_id);
+
+    my $domain = $sth->fetchrow_array() || '';
+    $sth->finish();
+    return $domain;
+}
+
+#
+# Public
+#
+
+sub show_login {
+    my $self = shift;
+
+    $self->session_delete();
+
+    my %params = ( title => 'VBoxAdm Login', nonavigation => 1, );
+
+    return $self->tt_process( 'login.tpl', \%params );
+}
+
+#
+# Private
+#
+
+#
+# General / Misc.
+#
+sub show_welcome {
+    my $self = shift;
+
+    my %params = ( 'title' => 'VBoxAdm Overview', );
+
+    return $self->tt_process( 'welcome.tpl', \%params );
+}
+
+#
+# Domains
+#
+
+sub show_domains {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $search = $q->param('search') || undef;
+
+    my $query = "SELECT id,name,is_active,";
+    $query .= "(SELECT COUNT(*) FROM aliases WHERE domain_id = domains.id) AS num_aliases,";
+    $query .= "(SELECT COUNT(*) FROM mailboxes WHERE domain_id = domains.id) AS num_mailboxes,";
+    $query .= "(SELECT COUNT(*) FROM domain_aliases WHERE domain_id = domains.id) AS num_domainaliases";
+    $query .= " FROM domains WHERE 1 ";
+    my @args = ();
+    if ($search) {
+        $query .= "AND (name LIKE ?) ";
+        $search =~ s/%//g;
+        my $search_arg = "%" . $search . "%";
+        push( @args, $search_arg );
+    }
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND a.domain_id = ?";
+        push( @args, $self->get_users_domainid() );
+    }
+    $query .= "ORDER BY name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @domains = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push( @domains,
+            { id => $row[0], name => $row[1], is_active => $row[2], num_aliases => $row[3], num_mailboxes => $row[4], num_domainaliases => $row[5], } );
+    }
+
+    my %params = (
+        'title'   => 'VBoxAdm Domains',
+        'domains' => \@domains,
+        'search'  => $search,
+    );
+
+    return $self->tt_process( 'domains.tpl', \%params );
+}
+
+sub show_create_domain {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    my %params = ( 'title' => 'Add Domain', );
+
+    return $self->tt_process( 'domain-create.tpl', \%params );
+}
+
+sub show_add_domain {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $domain             = &VBoxAdm::Utils::trim( lc( $q->param('domain') ) );
+    my $create_domainadmin = $q->param('create_domainadmin');
+
+    my $msg = '';
+    if ( $domain && !&VBoxAdm::Utils::is_valid_domain_rfc822($domain) ) {
+        $msg = "Invalid syntax. Domain is not RFC822 compliant!";
+    }
+    elsif ( $domain && $create_domainadmin ) {
+        my $query = "INSERT INTO domains (name,is_active) VALUES(?,1)";
+        my $sth   = $dbh->prepare($query);
+
+        if ( $sth->execute($domain) ) {
+            $msg = "Domain '$domain' added";
+        }
+        else {
+            $msg = "Failed to add Domain '$domain'. DBI Error: " . $sth->errstr;
+        }
+        $sth->finish();
+
+    }
+    else {
+        $msg = "Failed to add Domain. Insufficient parameters.";
+    }
+
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=domains');
+    return;
+}
+
+sub show_remove_domain {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $domain_id = $q->param('domain_id');
+
+    my $msg = '';
+    if ($domain_id) {
+        my $query = "DELETE FROM domains WHERE id = ?";
+        my $sth   = $dbh->prepare($query);
+        if ( $sth->execute($domain_id) ) {
+            $msg = "Domain #$domain_id removed";
+        }
+        else {
+            $msg = "Failed to remove Domain #$domain_id. DBI Error: " . $sth->errstr;
+        }
+        $sth->finish();
+
+    }
+    else {
+        $msg = 'Failed to remove domain. Insufficient Parameters.';
+    }
+
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=domains');
+    return;
+}
+
+sub show_update_domain {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $domain_id = $q->param('domain_id');
+    my $is_active = $q->param('is_active');
+
+    my $msg = '';
+    if ( $domain_id && defined($is_active) ) {
+        my $query = "UPDATE domains SET is_active = ? WHERE id = ?";
+        my @args  = ();
+        push( @args, $is_active );
+        push( @args, $domain_id );
+        if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+            $query .= "AND id = ?";
+            push( @args, $self->get_users_domainid() );
+        }
+        my $sth        = $dbh->prepare($query);
+        my $status_str = 'disabled';
+        if ($is_active) {
+            $status_str = 'enabled';
+        }
+        if ( $sth->execute(@args) ) {
+            $msg = "Domain #$domain_id $status_str";
+        }
+        else {
+            $msg = "Failed to set Domain #$domain_id $status_str";
+        }
+        $sth->finish();
+
+    }
+    else {
+        $msg = 'Failed to update Domain. Insufficient parameters';
+    }
+
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=domains');
+    return;
+}
+
+#
+# Domain Aliases
+#
+
+sub show_domain_aliases {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $search = $q->param('search') || undef;
+
+    my $query = "SELECT da.id,da.name,da.is_active,d.name FROM ";
+    $query .= "domain_aliases AS da LEFT JOIN domains AS d ON da.domain_id = d.id WHERE 1 ";
+    my @args = ();
+
+    # Search
+    if ($search) {
+        $query .= "AND (da.name LIKE ? OR d.name LIKE ?) ";
+        $search =~ s/%//g;
+        my $search_arg = "%" . $search . "%";
+        push( @args, $search_arg );
+        push( @args, $search_arg );
+    }
+
+    # Authorization
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND da.domain_id = ? ";
+        push( @args, $self->get_users_domainid() );
+    }
+    $query .= "ORDER BY da.name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @domains = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push( @domains, { id => $row[0], name => $row[1], is_active => $row[2], target => $row[3], } );
+    }
+    $sth->finish();
+
+    my %params = (
+        'title'   => 'VBoxAdm Domain-Aliases',
+        'domains' => \@domains,
+        'search'  => $search,
+    );
+
+    return $self->tt_process( 'domain-aliases.tpl', \%params );
+}
+
+sub show_create_domain_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    my $query = "SELECT id,name,is_active FROM domains WHERE 1 ";
+    my @args  = ();
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND id = ? ";
+        push( @args, $self->get_users_domainid() );
+    }
+    $query .= "ORDER BY name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @domains = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push( @domains, { id => $row[0], name => $row[1], is_active => $row[2], } );
+    }
+
+    my %params = (
+        'title'   => 'Add Domain Alias',
+        'domains' => \@domains,
+    );
+
+    return $self->tt_process( 'domain-alias-create.tpl', \%params );
+}
+
+sub show_add_domain_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $domain_alias = &VBoxAdm::Utils::trim( lc( $q->param('domain_alias') ) );
+    my $domain_id    = $q->param('domain');
+
+    my $msg = '';
+    if ( $domain_alias && !&VBoxAdm::Utils::is_valid_domain_rfc822($domain_alias) ) {
+        $msg = "Invalid syntax. Domain is not RFC822 compliant!";
+    }
+    elsif ( $domain_id && !$self->is_superadmin() && $self->is_domainadmin() && $domain_id != $self->get_users_domainid() ) {
+
+        # if domainadmin, verify that its his domain
+        $msg = "You are not authorized to modify this domain!";
+    }
+    elsif ( $domain_alias && $domain_id ) {
+        my $query = "INSERT INTO domain_aliases (name,domain_id,is_active) VALUES(?,?,1)";
+        my $sth   = $dbh->prepare($query);
+
+        if ( $sth->execute( $domain_alias, $domain_id ) ) {
+            $msg = "Added domain alias '$domain_alias' to domain #$domain_id";
+        }
+        else {
+            $msg = "Failed to add domain alias '$domain_alias' to domain #$domain_id. DBI Errstr: " . $sth->errstr;
+        }
+        $sth->finish();
+    }
+    else {
+        $msg = "Failed to add domain alias. No domain_alias or target domain given!";
+    }
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=domain_aliases');
+    return;
+}
+
+sub show_remove_domain_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $domain_alias_id = $q->param('domain_alias_id');
+
+    my $msg = '';
+    if ($domain_alias_id) {
+        my $query = "DELETE FROM domain_aliases WHERE id = ?";
+        my @args  = ();
+        push( @args, $domain_alias_id );
+        if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+            $query .= "AND domain_id = ?";
+            push( @args, $self->get_users_domainid() );
+        }
+        my $sth = $dbh->prepare($query);
+        if ( $sth->execute(@args) ) {
+            $msg = "Domain-Alias #$domain_alias_id removed";
+        }
+        else {
+            $msg = "Failed to remove Domain-Alias #$domain_alias_id. DBI Error: " . $sth->errstr;
+        }
+    }
+    else {
+        $msg = 'Failed to remove domain alias. Insufficient parameters.';
+    }
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=domain_aliases');
+    return;
+}
+
+sub show_edit_domain_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $domain_alias_id = $q->param('domain_alias_id');
+
+    my $query = "SELECT id,name,is_active FROM domains WHERE 1 ";
+    my @args  = ();
+
+    # Authorization
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND id = ?";
+        push( @args, $self->get_users_domainid() );
+    }
+    $query .= " ORDER BY name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @domains = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push( @domains, { id => $row[0], name => $row[1], is_active => $row[2], } );
+    }
+    $sth->finish();
+
+    $query = "SELECT da.id, da.name, da.domain_id, da.is_active, d.name FROM domain_aliases AS da ";
+    $query .= "LEFT JOIN domains AS d ON da.domain_id = d.id WHERE da.id = ?";
+    @args = ();
+    push( @args, $domain_alias_id );
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND da.domain_id = ?";
+        push( @args, $self->get_users_domainid() );
+    }
+    $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+    my @row = $sth->fetchrow_array();
+    $sth->finish();
+
+    my %params = (
+        title           => 'Edit Domain Alias',
+        domain_name     => $row[1],
+        is_active       => $row[3],
+        target          => $row[2],
+        domain_alias_id => $domain_alias_id,
+        domains         => \@domains,
+    );
+
+    return $self->tt_process( 'domain-alias-edit.tpl', \%params );
+}
+
+sub show_update_domain_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $domain_alias_id = $q->param('domain_alias_id');
+    my $is_active       = $q->param('is_active');
+    my $target          = $q->param('target');
+
+    my $msg = '';
+
+    if ( $domain_alias_id && defined($is_active) ) {
+        my $query = "UPDATE domain_aliases SET is_active = ? WHERE id = ?";
+        my @args  = ();
+        push( @args, $is_active );
+        push( @args, $domain_alias_id );
+        if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+            $query .= "AND domain_id = ?";
+            push( @args, $self->get_users_domainid() );
+        }
+        my $sth        = $dbh->prepare($query);
+        my $status_str = 'disabled';
+        if ( $is_active eq 'on' || $is_active eq 'true' ) {
+            $status_str = 'enabled';
+            $is_active  = 1;
+        }
+        if ( $sth->execute(@args) ) {
+            $msg .= "Domain-Alias #$domain_alias_id $status_str. ";
+        }
+        else {
+            $msg .= "Failed to set Domain-Alias #$domain_alias_id $status_str. ";
+        }
+    }
+
+    if ( $target && !$self->is_superadmin() && $self->is_domainadmin() && $target != $self->get_users_domainid() ) {
+
+        # if domainadmin, verify that its his domain
+        $msg = "You are not authorized to modify this domain!";
+    }
+    elsif ( $domain_alias_id && $target ) {
+        my $query = "UPDATE domain_aliases SET domain_id = ? WHERE id = ?";
+        my $sth   = $dbh->prepare($query);
+        if ( $sth->execute( $target, $domain_alias_id ) ) {
+            $msg .= "Domain-Alias #$domain_alias_id redirected to Domain #$target";
+        }
+        else {
+            $msg .= "Failed to redirect Domain-Alias #$domain_alias_id to #$target";
+        }
+    }
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=domain_aliases');
+    return;
+}
+
+#
+# Aliases
+#
+
+sub show_aliases {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $search = $q->param('search') || undef;
+
+    my $query = "SELECT a.id,a.local_part,a.is_active,a.goto,d.name FROM ";
+    $query .= "aliases AS a LEFT JOIN domains AS d ON a.domain_id = d.id WHERE 1 ";
+    my @args = ();
+    if ($search) {
+        $query .= "AND (a.local_part LIKE ? OR d.name LIKE ? OR a.goto LIKE ?) ";
+        $search =~ s/%//g;
+        my $search_arg = "%" . $search . "%";
+        push( @args, $search_arg );
+        push( @args, $search_arg );
+        push( @args, $search_arg );
+    }
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND a.domain_id = ?";
+        push( @args, $self->get_users_domainid() );
+    }
+    $query .= "ORDER BY a.local_part,d.name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @aliases = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push( @aliases, { id => $row[0], local_part => $row[1], is_active => $row[2], target => $row[3], domain => $row[4], } );
+    }
+
+    my %params = (
+        'title'   => 'VBoxAdm Aliases',
+        'aliases' => \@aliases,
+        'search'  => $search,
+    );
+
+    return $self->tt_process( 'aliases.tpl', \%params );
+}
+
+sub show_create_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    my $query = "SELECT id,name,is_active FROM domains WHERE 1 ";
+    my @args  = ();
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND id = ? ";
+        push( @args, $self->get_users_domainid() );
+    }
+    $query .= "ORDER BY name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @domains = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push( @domains, { id => $row[0], name => $row[1], is_active => $row[2], } );
+    }
+
+    my %params = (
+        'title'   => 'Add Alias',
+        'domains' => \@domains,
+    );
+
+    return $self->tt_process( 'alias-create.tpl', \%params );
+}
+
+sub show_add_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $local_part = &VBoxAdm::Utils::trim( lc( $q->param('local_part') ) );
+    my $domain_id  = $q->param('domain');
+    my $goto       = $q->param('goto');
+
+    my $msg = '';
+
+    if ( $domain_id && !$self->is_superadmin() && $self->is_domainadmin() && $domain_id != $self->get_users_domainid() ) {
+
+        # if domainadmin, verify that its his domain
+        $msg = "You are not authorized to modify this domain!";
+    }
+    elsif ( $local_part && !&VBoxAdm::Utils::is_valid_localpart_rfc822($local_part) ) {
+        $msg = "Invalid local part. This address is not RFC822 compliant!";
+    }
+    elsif ( $goto && !&VBoxAdm::Utils::is_valid_addresses_rfc822($goto) ) {
+        $msg = "Invalid address in destination!";
+    }
+    elsif ( $local_part && $domain_id && $goto ) {
+        my $query = "INSERT INTO aliases (domain_id,local_part,goto,is_active) VALUES(?,?,?,1)";
+        my $sth   = $dbh->prepare($query);
+        if ( $sth->execute( $domain_id, $local_part, $goto ) ) {
+            $msg = "Alias $local_part @ $domain_id to $goto added";
+        }
+        else {
+            $msg = "Failed to add alias $local_part @ $domain_id => $goto. DBI-Errstr: " . $sth->errstr;
+        }
+        $sth->finish();
+    }
+    else {
+        $msg = "Failed to add alias. Missing local_part, domain_id or target.";
+    }
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=aliases');
+    return;
+}
+
+sub show_remove_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $alias_id = $q->param('alias_id');
+
+    my $msg = '';
+
+    if ($alias_id) {
+        my $query = "DELETE FROM aliases WHERE id = ?";
+        my @args  = ();
+        push( @args, $alias_id );
+        if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+            $query .= "AND domain_id = ?";
+            push( @args, $self->get_users_domainid() );
+        }
+        my $sth = $dbh->prepare($query);
+        if ( $sth->execute(@args) ) {
+            $msg = "Alias #$alias_id removed";
+        }
+        else {
+            $msg = "Failed to remove Alias #$alias_id. DBI Error: " . $sth->errstr;
+        }
+    }
+    else {
+        $msg = 'Failed to remove alias. Insufficient parameters.';
+    }
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=aliases');
+    return;
+}
+
+sub show_edit_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $alias_id = $q->param('alias_id');
+
+    my $query = "SELECT a.local_part,d.name,a.goto,a.is_active FROM aliases AS a LEFT JOIN domains AS d ON a.domain_id = d.id WHERE a.id = ?";
+    my @args  = ();
+    push( @args, $alias_id );
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND a.domain_id = ?";
+        push( @args, $self->get_users_domainid() );
+    }
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+    my @row = $sth->fetchrow_array();
+
+    my %params = (
+        title      => 'Edit Alias',
+        alias_id   => $alias_id,
+        local_part => $row[0],
+        domain     => $row[1],
+        'goto'     => $row[2],
+        is_active  => $row[3],
+    );
+
+    return $self->tt_process( 'alias-edit.tpl', \%params );
+}
+
+sub show_update_alias {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $alias_id  = $q->param('alias_id');
+    my $is_active = $q->param('is_active');
+    my $target    = &VBoxAdm::Utils::trim( $q->param('goto') );
+
+    my $msg = '';
+
+    if ( $alias_id && defined($is_active) ) {
+        my $query = "UPDATE aliases SET is_active = ? WHERE id = ?";
+        my @args  = ();
+        push( @args, $is_active );
+        push( @args, $alias_id );
+
+        # Authorization
+        if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+            $query .= "AND domain_id = ?";
+            push( @args, $self->get_users_domainid() );
+        }
+        my $sth        = $dbh->prepare($query);
+        my $status_str = 'disabled';
+        if ($is_active) {
+            $status_str = 'enabled';
+        }
+        if ( $sth->execute(@args) ) {
+            $msg .= "Alias #$alias_id $status_str.";
+        }
+        else {
+            $msg .= "Failed to set Alias #$alias_id $status_str.";
+        }
+    }
+
+    # clean target string
+    if ($target) {
+        $target = join( ",", split( /\s*,\s*/, $target ) );
+    }
+    if ( $target && !&VBoxAdm::Utils::is_valid_addresses_rfc822($target) ) {
+        $msg = "Invalid address in destination!";
+    }
+    elsif ( $alias_id && $target ) {
+        my $query = "UPDATE aliases SET goto = ? WHERE id = ?";
+        my $sth   = $dbh->prepare($query);
+        if ( $sth->execute( $target, $alias_id ) ) {
+            $msg .= "Alias #$alias_id redirected to $target";
+        }
+        else {
+            $msg .= "Failed to redirect Alias #$alias_id to $target";
+        }
+    }
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=aliases');
+    return;
+}
+
+#
+# Mailboxes
+#
+
+sub show_mailboxes {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $search = $q->param('search') || undef;
+
+    my $query = "SELECT m.id,m.local_part,m.is_active,d.name,m.max_msg_size,m.is_on_vacation,m.quota,m.name ";
+    $query .= "FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE 1 ";
+    my @args = ();
+
+    # Search
+    if ($search) {
+        $query .= "AND (m.local_part LIKE ? OR d.name LIKE ? OR m.name LIKE ?) ";
+        $search =~ s/%//g;
+        my $search_arg = "%" . $search . "%";
+        push( @args, $search_arg );
+        push( @args, $search_arg );
+        push( @args, $search_arg );
+    }
+
+    # Authorization
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND m.domain_id = ? ";
+        push( @args, $self->get_users_domainid() );
+    }
+
+    # finalize query
+    $query .= " ORDER BY m.local_part,d.name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @mailboxes = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        my $msg_msg_size_mb = $row[4];
+        if ( $msg_msg_size_mb > 0 ) {
+            $msg_msg_size_mb /= 1024;
+        }
+        push(
+            @mailboxes,
+            {
+                id              => $row[0],
+                local_part      => $row[1],
+                is_active       => $row[2],
+                domain          => $row[3],
+                max_msg_size_mb => $msg_msg_size_mb,
+                is_on_vacation  => $row[5],
+                quota           => $row[6],
+                name            => $row[7],
+            }
+        );
+    }
+    $sth->finish();
+
+    my %params = (
+        'title'     => 'VBoxAdm Mailboxes',
+        'mailboxes' => \@mailboxes,
+        'search'    => $search,
+    );
+
+    return $self->tt_process( 'mailboxes.tpl', \%params );
+}
+
+sub show_create_mailbox {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    my $query = "SELECT id,name,is_active FROM domains WHERE 1 ";
+    my @args  = ();
+
+    # Authorization
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND id = ? ";
+        push( @args, $self->get_users_domainid() );
+    }
+    $query .= "ORDER BY name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @domains = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push( @domains, { id => $row[0], name => $row[1], is_active => $row[2], } );
+    }
+
+    my %params = (
+        'title'   => 'Add Mailbox',
+        'domains' => \@domains,
+    );
+
+    return $self->tt_process( 'mailbox-create.tpl', \%params );
+}
+
+sub show_add_mailbox {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $domain_id         = $q->param('domain');
+    my $username          = &VBoxAdm::Utils::trim( lc( $q->param('username') ) );
+    my $password          = $q->param('password');
+    my $password_2        = $q->param('password_2');
+    my $name              = lc( $q->param('name') );
+    my $is_active         = $q->param('is_active');
+    my $send_welcome_mail = $q->param('send_welcome_mail');
+    my $msg_max_size_mb   = $q->param('max_msg_size_mb');
+    $msg_max_size_mb ||= 15;    # default to 15 MB
+    my $max_msg_size   = $msg_max_size_mb * 1024;
+    my $sa_active      = $q->param('sa_active') || 1;
+    my $sa_kill_score  = $q->param('sa_kill_score') || 6.31;
+    my $is_superadmin  = 0;
+    my $is_domainadmin = 0;
+
+    if ( $self->is_superadmin() ) {
+        $is_superadmin = $q->param('is_superadmin');
+    }
+    elsif ( $self->is_domainadmin() && $domain_id == $self->get_users_domainid() ) {
+        $is_domainadmin = $q->param('is_domainadmin');
+    }
+
+    my $msg = '';
+
+    # no pws given, generate one
+    if ( !$password && !$password_2 ) {
+        $password = Crypt::GeneratePassword::word( 8, 12 );
+        $password_2 = $password;
+    }
+
+    if ( $domain_id && !$self->is_superadmin() && $self->is_domainadmin() && $domain_id != $self->get_users_domainid() ) {
+
+        # if domainadmin, verify that its his domain
+        $msg = "You are not authorized to modify this domain!";
+    }
+    elsif ( $username && !&VBoxAdm::Utils::is_valid_localpart_rfc822($username) ) {
+        $msg = "Invalid local part. This address is not RFC822 compliant!";
+    }
+    elsif ( $password && $password_2 && $password ne $password_2 ) {
+        $msg = "Passwords do not match.";
+    }
+    elsif ( $domain_id && $username && $password && $name && $password eq $password_2 ) {
+        my $query = "INSERT INTO mailboxes (domain_id,local_part,password,is_active) VALUES(?,?,?,?)";
+        my $sth   = $dbh->prepare($query);
+        if ( $sth->execute( $domain_id, $username, $password, $is_active ) ) {
+            $msg .= "Added Mailbox $username @ #$domain_id for $name";
+
+            # get domain name for sender
+            my $domain_name = $self->get_domain_byid($domain_id) || 'localhost';
+
+            # send_welcome_mail
+            my $emsg = '';
+            $emsg .= "Subject: Welcome\r\n";
+            $emsg .= "Auto-Submitted: auto-generated\r\n";
+            $emsg .= "From: VBoxAdm <vboxadm\@" . $domain_name . ">\r\n";
+            $emsg .= "\r\n";
+            $emsg .= "Welcome to your new mailbox.";
+            &VBoxAdm::Utils::sendmail( 'vboxadm@localhost', $emsg );
+        }
+        else {
+            $msg = "Failed to add Mailbox $username @ #$domain_id for $name. DBI Error: " . $sth->errstr;
+        }
+        $sth->finish();
+    }
+    else {
+        $msg = "Failed to add Mailbox. Insufficient parameters.";
+    }
+
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=mailboxes');
+    return;
+}
+
+sub show_remove_mailbox {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $mailbox_id = $q->param('mailbox_id');
+
+    my $msg = '';
+
+    if ($mailbox_id) {
+        my $query = "DELETE FROM mailboxes WHERE id = ?";
+        my @args  = ();
+        push( @args, $mailbox_id );
+        if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+            $query .= "AND domain_id = ?";
+            push( @args, $self->get_users_domainid() );
+        }
+        my $sth = $dbh->prepare($query);
+        if ( $sth->execute(@args) ) {
+            $msg = "Mailbox #$mailbox_id removed";
+        }
+        else {
+            $msg = "Failed to remove Mailbox #$mailbox_id DBI Error: " . $sth->errstr;
+        }
+    }
+    else {
+        $msg = "Failed to remove mailbox. Insufficient parameters.";
+    }
+
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=mailboxes');
+    return;
+}
+
+sub show_edit_mailbox {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $mailbox_id = $q->param('mailbox_id');
+
+    my $query = "SELECT m.local_part,d.name,m.name,m.is_active,m.max_msg_size,";
+    $query .= "m.is_on_vacation,m.vacation_msg,m.quota,m.is_domainadmin,";
+    $query .= "m.is_superadmin,d.id,m.sa_active,m.sa_kill_score FROM mailboxes AS m LEFT JOIN domains AS d ";
+    $query .= "ON m.domain_id = d.id WHERE m.id = ? ";
+    my @args = ();
+    push( @args, $mailbox_id );
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND m.domain_id = ?";
+        push( @args, $self->get_users_domainid() );
+    }
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+    my @row = $sth->fetchrow_array();
+    $sth->finish();
+
+    my $max_msg_size_mb = $row[4];
+    if ( $max_msg_size_mb > 0 ) {
+        $max_msg_size_mb /= 1024;
+    }
+
+    my $domain_id = $row[10];
+
+    # show aliases pointing to this mbox, don't forget domain aliases!
+    # show cc (aliases w/ the same name as this mailbox)
+    $query = "SELECT id,goto FROM aliases WHERE local_part = (SELECT local_part FROM mailboxes WHERE id = ?) AND domain_id = ? ";
+    @args  = ();
+    push( @args, $mailbox_id );
+    push( @args, $domain_id );
+    if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+        $query .= "AND domain_id = ?";
+        push( @args, $self->get_users_domainid() );
+    }
+    $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+    my ( $cc_id, $cc_goto ) = $sth->fetchrow_array();
+    $sth->finish();
+
+    my %params = (
+        title              => 'Edit Mailbox',
+        mailbox_id         => $mailbox_id,
+        local_part         => $row[0],
+        domain             => $row[1],
+        name               => $row[2],
+        is_active          => $row[3],
+        max_msg_size_mb    => $max_msg_size_mb,
+        is_on_vacation     => $row[5],
+        vacation_msg       => $row[6],
+        quota              => $row[7],
+        cc_goto            => $cc_goto,
+        cc_id              => $cc_id,
+        mb_is_domainadmin  => $row[8],
+        mb_is_superadmin   => $row[9],
+        user_is_superadmin => $self->is_superadmin(),
+        sa_active          => $row[11],
+        sa_kill_score      => $row[12],
+    );
+
+    return $self->tt_process( 'mailbox-edit.tpl', \%params );
+}
+
+sub show_update_mailbox {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() && !$self->is_domainadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $mailbox_id      = $q->param('mailbox_id');
+    my $password        = $q->param('password');
+    my $password_2      = $q->param('password_2');
+    my $name            = $q->param('name');
+    my $is_active       = $q->param('is_active');
+    my $msg_max_size_mb = $q->param('max_msg_size_mb');
+    $msg_max_size_mb ||= 15;    # default to 15 MB
+    my $max_msg_size   = $msg_max_size_mb * 1024;
+    my $is_on_vacation = $q->param('is_on_vacation');
+    my $vacation_msg   = $q->param('vacation_msg');
+    my $is_domainadmin = $q->param('is_domainadmin');
+    my $is_superadmin  = $q->param('is_superadmin');
+    my $sa_active      = $q->param('sa_active');
+    my $sa_kill_score  = $q->param('sa_kill_score');
+
+    my $msg = '';
+
+    if ($mailbox_id) {
+        my $query = "UPDATE mailboxes SET ";
+
+        # only execute query if scalar(@params) > 0, i.e. at least on valid option
+        my @params = ();
+
+        # Password
+        if ( $password && $password_2 ) {
+
+            $Data::Password::MINLEN = 8;
+            $Data::Password::MAXLEN = undef;
+
+            # passwords must be equal and at least 8 chars long
+            if ( $password eq $password_2 && length($password) > 7 ) {
+
+                # Check password strength
+                if ( my $str = Data::Password::IsBadPassword($password) ) {
+                    $msg .= 'ERROR: Bad password - ' . $str . '.';
+                }
+                else {
+                    $query .= "password = ?, ";
+                    push( @params, $password );
+                }
+            }
+        }
+
+        # Name
+        if ($name) {
+            $query .= "name = ?, ";
+            push( @params, $name );
+        }
+
+        # Is_Active
+        # checkboxes are undefined if they are false!
+        my $status_str = 'disabled';
+        if ($is_active) {
+            $status_str = 'enabled';
+            $is_active  = 1;
+        }
+        else {
+            $is_active = 0;
+        }
+        $query .= "is_active = ?, ";
+        push( @params, $is_active );
+
+        # Max Msg Size
+        if ( defined($max_msg_size) ) {
+            $query .= "max_msg_size = ?, ";
+            push( @params, $max_msg_size );
+        }
+
+        # Is Superadmin / Is Domainadmin
+        if ( $self->is_superadmin() ) {
+            $query .= "is_superadmin = ?, ";
+            if ( defined($is_superadmin) && $is_superadmin eq 'on' ) {
+                push( @params, 1 );
+            }
+            else {
+                push( @params, 0 );
+            }
+            $query .= "is_domainadmin = ?, ";
+            if ( defined($is_domainadmin) && $is_domainadmin eq 'on' ) {
+                push( @params, 1 );
+            }
+            else {
+                push( @params, 0 );
+            }
+        }
+
+        # SpamAssassin
+        if ( defined($sa_kill_score) ) {
+            $query .= "sa_kill_score = ?, ";
+            push( @params, $sa_kill_score );
+        }
+        if ( defined($sa_active) ) {
+            $sa_active = 1;
+        }
+        else {
+            $sa_active = 0;
+        }
+        push( @params, $sa_active );
+        $query .= "sa_active = ?, ";
+
+        # Is_On_Vacation / Vacation Msg
+        if ( defined($is_on_vacation) && $is_on_vacation eq 'on' && $vacation_msg && length($vacation_msg) > 1 ) {
+            $is_on_vacation = 1;
+        }
+        else {
+            $is_on_vacation = 0;
+            $vacation_msg   = '';
+        }
+        $query .= "is_on_vacation = ?, vacation_msg = ? ";
+        push( @params, $is_on_vacation );
+        push( @params, $vacation_msg );
+
+        # finialize query
+        $query .= " WHERE id = ?";
+        push( @params, $mailbox_id );
+
+        # if domainadmin, verify that its his domain
+        if ( !$self->is_superadmin() && $self->is_domainadmin() ) {
+            $query .= "AND domain_id = ?";
+            push( @params, $self->get_users_domainid() );
+        }
+
+        # at least on option has changed
+        if ( scalar(@params) > 1 ) {
+            my $sth = $dbh->prepare($query);
+
+            if ( $sth->execute(@params) ) {
+                $msg .= "Updated Mailbox #$mailbox_id. ";
+            }
+            else {
+                $msg .= "Failed to update Mailbox #$mailbox_id. Query: $query, Params: '" . join( "-", @params ) . "', DBI Error: " . $sth->errstr;
+            }
+        }
+        else {
+            $msg .= "No Parameter changed. ";
+        }
+    }
+    else {
+        $msg .= "Failed to update Mailbox. No Mailbox-ID given. ";
+    }
+
+    $self->log( $msg . ". User: " . $self->authen->username );
+    $self->add_notify($msg);
+    $self->redirect('vboxadm.pl?rm=mailboxes');
+    return;
+}
+
+#
+# Log
+#
+
+sub show_log {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    my $search = $q->param('search') || undef;
+
+    my @args  = ();
+    my $query = "SELECT * FROM log ";
+    if ($search) {
+        $query .= "WHERE msg LIKE ? ";
+        $search =~ s/%//g;
+        my $search_arg = "%" . $search . "%";
+        push( @args, $search_arg );
+    }
+    $query .= "ORDER BY ts DESC LIMIT 30";
+    my $sth = $dbh->prepare($query);
+    $sth->execute(@args);
+
+    my @log = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push( @log, { ts => $row[0], msg => $row[1], } );
+    }
+
+    my %params = (
+        'title'  => 'VBoxAdm Log',
+        'log'    => \@log,
+        'search' => $search,
+    );
+
+    # TODO LOW add pagination, see http://cgi-app.org/index.cgi?PagingData
+
+    return $self->tt_process( 'log.tpl', \%params );
+}
+
+#
+# Admins
+#
+
+sub show_admins {
+    my $self = shift;
+
+    if ( !$self->is_superadmin() ) {
+        my $msg = "You are not authorized to access this page.";
+        $self->log( $msg . ". User: " . $self->authen->username );
+        $self->add_notify($msg);
+        $self->redirect('vboxadm.pl?rm=welcome');
+        return;
+    }
+
+    # Get our database connection
+    my $dbh = $self->dbh();
+
+    # Get CGI Query object
+    my $q = $self->query();
+
+    my $search = $q->param('search') || undef;
+
+    my $query = "SELECT m.id,m.local_part,m.is_active,d.name,m.is_domainadmin,m.is_superadmin ";
+    $query .= "FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE m.is_superadmin ";
+    $query .= "OR m.is_domainadmin ORDER BY m.is_superadmin,m.is_domainadmin,m.local_part,d.name";
+    my $sth = $dbh->prepare($query);
+    $sth->execute();
+
+    my @admins = ();
+    while ( my @row = $sth->fetchrow_array() ) {
+        push(
+            @admins,
+            {
+                id             => $row[0],
+                local_part     => $row[1],
+                is_active      => $row[2],
+                domain         => $row[3],
+                is_domainadmin => $row[4],
+                is_superadmin  => $row[5],
+            }
+        );
+    }
+
+    my %params = (
+        'title'  => 'VBoxAdm Admins',
+        'admins' => \@admins,
+        'search' => $search,
+    );
+
+    return $self->tt_process( 'admins.tpl', \%params );
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+VBoxAdm::Frontend - Frontend for VBoxAdm
+
+=head1 VERSION
+
+This documentation refers to VBoxAdm::Frontend version @VERSION@
+built on @BUILDDATE@.
+
+=head1 SYNOPSIS
+
+    use VBoxAdm::Frontend;
+		my $vadm = VBoxAdm::Frontend->new();
+		$vadm->run();
+
+=head1 DESCRIPTION
+
+A full description of the module and its features.
+May include numerous subsections (i.e., =head2, =head3, etc.).
+
+=head1 SUBROUTINES/METHODS
+
+A separate section listing the public components of the module's interface.
+These normally consist of either subroutines that may be exported, or methods
+that may be called on objects belonging to the classes that the module provides.
+Name the section accordingly.
+
+In an object-oriented module, this section should begin with a sentence of the
+form "An object of this class represents...", to give the reader a high-level
+context to help them understand the methods that are subsequently described.
+
+=head1 DIAGNOSTICS
+
+A list of every error and warning message that the module can generate
+(even the ones that will "never happen"), with a full explanation of each
+problem, one or more likely causes, and any suggested remedies.
+(See also "Documenting Errors" in Chapter 13.)
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+A full explanation of any configuration system(s) used by the module,
+including the names and locations of any configuration files, and the
+meaning of any environment variables or properties that can be set. These
+descriptions must also include details of any configuration language used.
+(See also "Configuration Files" in Chapter 19.)
+
+=head1 DEPENDENCIES
+
+A list of all the other modules that this module relies upon, including any
+restrictions on versions, and an indication of whether these required modules are
+part of the standard Perl distribution, part of the module's distribution,
+or must be installed separately.
+
+=head1 INCOMPATIBILITIES
+
+A list of any modules that this module cannot be used in conjunction with.
+This may be due to name conflicts in the interface, or competition for
+system or program resources, or due to internal limitations of Perl
+(for example, many modules that use source code filters are mutually
+incompatible).
+
+=head1 BUGS AND LIMITATIONS
+
+A list of known problems with the module, together with some indication of
+whether they are likely to be fixed in an upcoming release.
+
+Also a list of restrictions on the features the module does provide:
+data types that cannot be handled, performance issues and the circumstances
+in which they may arise, practical limitations on the size of data sets,
+special cases that are not (yet) handled, etc.
+
+There are no known bugs in this module.
+Please report problems to 
+
+Dominik Schulz (dominik.schulz@gauner.org)
+Patches are welcome.
+
+=head1 AUTHOR
+
+Dominik Schulz (dominik.schulz@gauner.org)
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+=cut

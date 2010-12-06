@@ -1,0 +1,463 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+# See http://tools.ietf.org/html/rfc3834
+
+use DBI;
+use Getopt::Long;
+use Config::Std;
+
+# TODO replace with Log::Dispatch
+use Sys::Syslog;
+
+use VBoxAdm::Utils '@VERSION@';
+
+my $db_host = 'localhost';
+my $db_user = 'vacation';
+my $db_pass = '';
+my $db_port = 3306;
+my $db_db   = 'vboxadm';
+
+my $vacation_domain = 'autoreply.domain.tld';
+
+my $logfile = '/var/log/vacation.log';
+
+# notification interval, in seconds
+# default to 7 days
+my $notify_interval = 7 * 60 * 60 * 24;
+
+my ( $conffile_used, @hooks, %hook, %config, );
+
+# Valid config file locations to try
+my @conffile_locations = qw(
+  vboxadm.conf
+  conf/vboxadm.conf
+  /etc/vboxadm.conf
+  /etc/postfix/vboxadm.conf
+);
+
+GetOptions(
+    'sender|s=s'    => \$config{'sender'},
+    'recipient|r=s' => \$config{'recipient'},
+    'verbose|v+'    => \$config{'verbose'},
+
+    # shift removes name of the option (config) and leaves the value for unshift
+    # unshift prepends to the list of valid config files so it is tried first
+    'config=s' => sub { shift; unshift( @conffile_locations, @_ ); },
+) or &usage();
+
+# Try all config file locations
+foreach my $loc (@conffile_locations) {
+    if ( -r $loc ) {
+        $conffile_used = $loc;
+        read_config $loc => %config;
+        last;
+    }
+}
+
+# recipient must be "unrolled", it's smth. like "user#domain.tld@vacation.domain.tld" -> "user@domain.tld"
+if ( $config{'recipient'} ) {
+    my $unrolled = &unroll_recipient( $config{'recipient'} );
+    if ($unrolled) {
+        $config{'orig-recipient'} = $config{'recipient'};
+        $config{'recipient'}      = $unrolled;
+    }
+}
+
+$db_host         = $config{'default'}{'dbhost'}           || $db_host;
+$db_user         = $config{'default'}{'dbuser'}           || $db_user;
+$db_pass         = $config{'default'}{'dbpass'}           || $db_pass;
+$db_port         = $config{'default'}{'dbport'}           || $db_port;
+$db_db           = $config{'default'}{'dbdb'}             || $db_db;
+$notify_interval = $config{'vacation'}{'notify_interval'} || 3600 * 24 * 7;    # default to one week
+
+# Check options
+die("No sender given on command line!")    if !$config{'sender'};
+die("No recipient given on command line!") if !$config{'recipient'};
+
+binmode( STDIN, ':utf8' );
+
+openlog( 'vboxadm-vacation', 'ndelay,nofatal', 'mail' );
+
+# detect infinite lookup loops
+#my $loopcount = 0;
+
+###
+# Parse incoming mail
+###
+my %header = ();
+my %status = ();
+
+while (<STDIN>) {
+    last if (/^$/);
+    /^From:\s+(.*)$/i                  and $header{'from'}              = $1;
+    /^To:\s+(.*)$/i                    and $header{'to'}                = $1;
+    /^CC:\s+(.*)$/i                    and $header{'cc'}                = $1;
+    /^Bcc:\s+(.*)$/i                   and $header{'bcc'}               = $1;
+    /^Resent-To:\s+(.*)$/i             and $header{'resent-to'}         = $1;
+    /^Resent-CC:\s+(.*)$/i             and $header{'resent-cc'}         = $1;
+    /^Resent-Bcc:\s+(.*)$/i            and $header{'resent-bcc'}        = $1;
+    /^Reply-to:\s+(.*)$/i              and $header{'reply-to'}          = $1;
+    /^Subject:\s+(.*)$/i               and $header{'subject'}           = $1;
+    /^Return-Path:\s+<?([^>]+)>?$/i    and $header{'return-path'}       = $1;
+    /^Auto-Submitted:\s+(.*)$/i        and $header{'auto-submitted'}    = lc($1);
+    /^X-Loop:\s+VBoxAdm-Vacation\s+$/i and $status{'is-loop'}           = 1;
+    /^List-.*:/i                       and $status{'is-list'}           = 1;
+    /^Message-Id:\s+<([^>]+)>/i        and $header{'msg-id'}            = $1;
+    /^X-Spam-(Flag|Status):\s+YES/i    and $header{'x-spam-status'}     = 1 and $status{'is-spam'} = 1;
+    /^X-Facebook-Notify:/i             and $header{'x-facebook-notify'} = 1;
+    /^Precedence:\s+(bulk|list|junk)/i and $header{'precedence'}        = $1;
+    /^(X-(Barracuda-)?Spam-Status):\s+(Yes)/i                        and $header{$1} = $3 and $status{'is-spam'} = 1;
+    /^(X-Dspam-Result):\s+(spam|bl[ao]cklisted)/i                    and $header{$1} = $3 and $status{'is-spam'} = 1;
+    /^(X-(Anti|Avas-)?virus-status):\s+(infected)/i                  and $header{$1} = $3 and $status{'is-spam'} = 1;
+    /^(X-(Avas-spam|Spamtest|CRM114|Razor|Pyzor)-status):\s+(Spam)/i and $header{$1} = $3 and $status{'is-spam'} = 1;
+    /^(X-OSBF-LUA-Score):\s+[0-9\/\.\-\+]+\s+\[([-S])\]/i            and $header{$1} = $3 and $status{'is-spam'} = 1;
+}
+
+###
+# DO NOT RESPOND IF:
+###
+
+# Loops:
+# $is_loop
+if ( $status{'is-loop'} ) {
+    syslog( 2, 'Detected Loop - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 0;
+}
+
+# Bounces:
+# $from =~ /(MAILER-DAEMON|postmaster|Mail Delivery System|E-postsystemet|Delivery Subsystem|Mailer_Daemon)/i
+# $subject =~ /(Undeliver|Returned|returning|failure|failed|Delivery (Status )?Notification|fehlgeschlagen|remise|rejected|nicht zustellbar|Unzustellbar|Unbekannt|DSN|Benachrichtung|problem|falla|Zurückgeschickte Mail|Nondeliverable mail|Kan ikke leveres)/i
+if ( $header{'from'} && $header{'from'} =~ /(MAILER-DAEMON|postmaster|Mail Delivery System|E-postsystemet|Delivery Subsystem|Mailer_Daemon)/i ) {
+    syslog( 2, 'Detected Bounce - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 0;
+}
+
+# Vacation:
+# $subject =~
+# /(abwesen|vacation|Out of Office|reply|ist au.er Haus|Vielen Dank für Ihre E-Mail|Out-of-office|Deine E-Mail|Ihre Nachricht|Semestersvar|Feriesvar|R.ponse en cas d.absence|Risposta di assenza)/i
+if (   $header{'subject'}
+    && $header{'subject'} =~
+/(abwesen|vacation|Out of Office|reply|ist au.er Haus|Vielen Dank für Ihre E-Mail|Out-of-office|Deine E-Mail|Ihre Nachricht|Semestersvar|Feriesvar|R.ponse en cas d.absence|Risposta di assenza)/i
+  )
+{
+    syslog( 2, 'Detected Vacation Message - From: %s - To: %s - Subject: %s - Exiting', $config{'sender'}, $config{'recipient'}, $header{'subject'} );
+    closelog();
+    exit 0;
+}
+
+# Delays:
+# $from && $subject && $from =~ /(mailer|Mail Delivery System)/i && $subject =~ /(delay|warning)/i
+if (   $header{'from'}
+    && $header{'subject'}
+    && $header{'from'} =~ m/(mailer|Mail Delivery System)/i
+    && $header{'subject'} =~ m/(delay|warning)/i )
+{
+    syslog( 2, 'Detected Delay Message - From: %s - To: %s - Subject: %s - Exiting', $config{'sender'}, $config{'recipient'}, $header{'subject'} );
+    closelog();
+    exit 0;
+}
+
+# Auto-Generated Messages:
+# $is_list || ( $auto_submitted && $auto_submitted ne "no" ) || ( $from && $from eq "<>" )
+if (   $status{'is-list'}
+    || ( $header{'auto-submitted'} && $header{'auto-submitted'} ne 'no' )
+    || ( $header{'from'} && $header{'from'} eq '<>' ) )
+{
+    syslog( 2, 'Detected Auto-Submitted Message - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 0;
+}
+
+# Spam:
+# $from && $subject && $subject =~ m/(\*\*\*SPAM\*\*\*|WW Spam: high)
+# $status{'is-spam'}
+if ( $status{'is-spam'} ) {
+    syslog( 2, 'Detected SPAM - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 0;
+}
+
+# Facebook:
+# $header{'x-facebook-notify'}
+if ( $header{'x-facebook-notify'} ) {
+    syslog( 2, 'Detected Facebook Notify - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 0;
+}
+
+# Precedence:
+# $header{'precedence'}
+if ( $header{'precedence'} ) {
+    syslog( 2, 'Detected Precedence Header (%s) - From: %s - To: %s - Exiting', $header{'precedence'}, $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 0;
+}
+
+# No Return-Path:
+# !$header{'return-path'}
+if ( !$header{'return-path'} ) {
+    syslog( 2, 'Missing Return-Path - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 0;
+}
+
+# recipient address must be contained in either: to, cc, bcc, resent-to, resent-cc or resent-bcc
+if ( !&check_recipient( $config{'recipient'}, \%header ) ) {
+    syslog( 2, 'Envelope-To Recipient not found in one of To, CC, BCC, Resent-To, Resent-CC or Reset-BCC - From: %s - To: %s - Exiting',
+        $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 1;
+}
+
+my %reply_header = ();
+
+# sent respone to Return-Path if set, of Reply-To if set or From as last resort
+$reply_header{'To'} = undef;
+if ( $header{'return-path'} ) {
+    $reply_header{'To'} = $header{'return-path'};
+}
+elsif ( $header{'reply-to'} ) {
+    $reply_header{'To'} = $header{'reply-to'};
+}
+elsif ( $header{'from'} ) {
+    $reply_header{'To'} = $header{'from'};
+}
+elsif ( $config{'sender'} ) {
+    $reply_header{'To'} = $config{'sender'};
+}
+else {
+    syslog( 2, 'Could not find a valid sender address - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 1;
+}
+
+# set sender to (local) recipient
+$reply_header{'From'} = undef;
+$reply_header{'From'} = $config{'recipient'};
+
+# set X-Loop: VBoxAdmVacation
+$reply_header{'X-Loop'} = 'VBoxAdm-Vacation';
+
+# set Auto-Submitted: auto-replied
+$reply_header{'Auto-Submitted'} = 'auto-replied';
+
+# set references/in-reply-to, if we found a message id
+if ( $header{'msg-id'} ) {
+    $reply_header{'In-Reply-To'} = $header{'msg-id'};
+    $reply_header{'References'}  = $header{'msg-id'};
+}
+
+# if all these preconditions succeed:
+my $dsn = "DBI:mysql:host=$db_host;database=$db_db;port=$db_port;user=$db_user;password=$db_pass";
+my $dbh = DBI->connect( $dsn, undef, undef, { RaiseError => 1, } );
+
+if ( !$dbh ) {
+    syslog( 2, 'Could not connect to database with DSN $dsn - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    die("Could not connect to database with DSN $dsn");
+}
+
+# Talk UTF-8 to the database
+# Prepare DB connection for utf8
+$dbh->do("SET NAMES utf8");
+
+# check notification sent within ... (see above)
+if ( already_notified( $dbh, $config{'recipient'}, $config{'sender'}, $notify_interval ) ) {
+    syslog( 2, 'Already notified - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    exit 0;
+}
+
+# send msg
+&send_vacation_mail( $dbh, $config{'recipient'}, \%reply_header );
+
+closelog();
+exit 0;
+
+###########################################################################
+# Subs
+###########################################################################
+sub check_recipient {
+
+    # recipient address must be contained in either: to, cc, bcc, resent-to, resent-cc or resent-bcc
+    my $recipient  = shift;
+    my $header_ref = shift;
+
+    my $found_recipient = 0;
+
+    foreach my $hdr (qw(to cc bcc resent-to resent-cc resent-bcc)) {
+        if ( $header{$hdr} ) {
+            foreach my $dest ( VBoxAdm::Utils::extract_recipients( $header{$hdr} ) ) {
+                print "check_recipient - $recipient - $dest\n";
+                if ( $recipient =~ m/^$dest$/i ) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    return;
+}
+
+sub unroll_recipient {
+    my $rolled = shift;
+
+    # recipient must be "unrolled", it's smth. like "user#domain.tld@vacation.domain.tld" -> "user@domain.tld"
+    if ( $rolled =~ m/^([^#]+)#([^@]+)\@vacation\./ ) {
+        my $local_part = $1;
+        my $domain     = $2;
+        return $local_part . '@' . $domain;
+    }
+
+    return;
+}
+
+sub already_notified {
+    my $dbh             = shift;
+    my $to              = shift;
+    my $from            = shift;
+    my $notify_interval = shift;
+
+    # Notification sent within $notify_interval seconds
+    # SQL: SELECT COUNT(*) FROM vacation_notify WHERE on_vacation = recipient AND notified = sender AND notified_at <= NOW() - $notify_interval;
+    my $sql = "SELECT COUNT(*) FROM vacation_notify WHERE on_vacation = ? AND notified = ? AND notified_at <= NOW() - ?";
+    my $sth = $dbh->prepare($sql);
+    if ( $sth->execute( $to, $from, $notify_interval ) ) {
+        my $count = $sth->fetchrow_array();
+        $sth->finish();
+        if ( $count > 0 ) {
+            return 1;
+        }
+        else {
+            return;
+        }
+    }
+    else {
+
+        # if in doubt, assume we've already sent a notification
+        # better not respond than sending too much
+        $sth->finish();
+        return 1;
+    }
+}
+
+sub send_vacation_mail {
+    my $dbh        = shift;
+    my $recipient  = shift;
+    my $header_ref = shift;
+
+    # get vacation subj and vacation msg
+    my $sql =
+"SELECT vacation_subj, vacation_msg FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE CONCAT(m.local_part,'\@',d.name) = ? AND is_on_vacation";
+    my $sth = $dbh->prepare($sql);
+
+    if ( $sth->execute($recipient) ) {
+        my ( $subj, $msg ) = $sth->fetchrow_array();
+
+        if ( !$subj || !$msg ) {
+            syslog( 2, 'send_vacation_mail - Recipient: %s - No Subject or Message found. Aborting.', $recipient );
+            return;
+        }
+
+        $header_ref->{'Subject'} = $subj;
+
+        my $mail = '';
+        foreach my $key ( keys %{$header_ref} ) {
+            $mail .= ucfirst($key) . ': ' . $header_ref->{$key} . "\r\n";
+        }
+        $mail .= "\r\n";
+        $mail .= $msg;
+
+        &VBoxAdm::Utils::sendmail( $header_ref->{'From'}, $mail );
+        syslog( 2, "send_vacation_mail - Sent vacation reply to %s", $header_ref->{'To'} );
+        return 1;
+    }
+    else {
+
+        # log error
+        syslog( 2, 'send_vacation_mail - Recipient: %s - SQL-Error. Aborting.', $recipient );
+        return;
+    }
+}
+__END__
+
+=head1 NAME
+
+vacation - Vacation replies for VBoxAdm
+
+=head1 VERSION
+
+This documentation refers to VBoxAdm vacation version @VERSION@
+built on @BUILDDATE@.
+
+=head1 DESCRIPTION
+
+This script implements the vacation functionality of VBoxAdm. If your MTA
+is configured correctly it will forward any message received for a user
+which is labeled as being on vacation in the db to this script. It will
+then perform a number of checks to verify that the mails came from
+an actual user and then reply to this mail with the configured subject
+and message. The script tries to be RFC complient, especially RFC 3834,
+and will notify each user only once during the configured notification
+interval. It tries to set appropriate headers (Auto-Submitted, References,
+In-Reply-To, et. al.).
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+The configuration file should be place either in /etc/vboxadm.conf or
+in /etc/postfix/vboxadm.conf. This is a common configuration file
+for the whole suite of VBoxAdm applications. Each part of this suite
+has its own section in the config file and all use the values
+from the default section when appropriate.
+
+=head2 default
+The default section should contain at least the database configuration.
+
+dbuser - The user used to connect to the MySQL database.
+dbpass - This users password.
+dbdb - The db used by this application.
+dbhost - The MySQL database host, usually localhost.
+
+=head2 vacation
+
+notify_interval - The time between subsequent notifies for one user in seconds.
+
+=head1 DEPENDENCIES
+
+VBoxAdm::Utils, DBI.
+
+=head1 INCOMPATIBILITIES
+
+None known.
+
+=head1 BUGS AND LIMITATIONS
+
+There are no known bugs in this module.
+Please report problems to Dominik Schulz (dominik.schulz@gauner.org)
+Patches are welcome.
+
+=head1 AUTHOR
+
+Dominik Schulz (dominik.schulz@gauner.org)
+
+=head1 LICENCE AND COPYRIGHT
+
+This implementation was previously based on smtpproxy but switched to
+Net::Server::PreFork later. Large parts of this code are based on the ideas
+of SpamPD, which is itself based on smtpprox, but all code,
+except MSDW::SMTP::*, was written by myself.
+
+Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+=cut
