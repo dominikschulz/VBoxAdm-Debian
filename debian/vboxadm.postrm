@@ -8,12 +8,8 @@ lighttpd_remove() {
     rm -f /etc/lighttpd/conf-available/50-vboxadm.conf
     if which lighty-enable-mod >/dev/null 2>&1; then
       lighty-disable-mod phpmyadmin
-    else
-      #echo "Lighttpd not installed, skipping"
-      # Use debconf output
     fi
     if [ -h /etc/lighttpd/conf-enabled/50-vboxadm.conf ]; then
-      #echo 'Manually deleting lighttpd/vboxadm configuration link'
       # Use debconf output
       rm /etc/lighttpd/conf-enabled/50-vboxadm.conf
     fi
