@@ -2,7 +2,7 @@ vboxadm (0.0.15-7) unstable; urgency=low
 
   * Fix homedir.
 
- -- Dominik Schulz <lkml@ds.gauner.org>  Mon, 06 Dec 2010 21:53:17 +0100
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Mon, 06 Dec 2010 21:53:17 +0100
 
 vboxadm (0.0.15-6) unstable; urgency=low
 
