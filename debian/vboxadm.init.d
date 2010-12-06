@@ -52,14 +52,16 @@ start_proxy ()
         fi
     else
         echo "SMTP-Proxy disabled in /etc/default/vboxadm"
-        STATUS=1
+        STATUS=0
     fi
 }
 
 stop_proxy ()
 {
-  kill `cat $PIDFILE` || true
-  rm -f $PIDFILE
+  if [ -e $PIDFILE ]; then
+    kill `cat $PIDFILE` >/dev/null 2>&1 || true
+    rm -f $PIDFILE
+  fi
 }
 
 case "$1" in
