@@ -1,3 +1,10 @@
+vboxadm (0.0.15-10) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add debconf config script.
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Mon, 06 Dec 2010 22:17:28 +0100
+
 vboxadm (0.0.15-9) unstable; urgency=low
 
   * Depend on SA
