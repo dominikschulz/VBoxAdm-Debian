@@ -1,0 +1,5 @@
+vboxadm (0.0.15-1) unstable; urgency=low
+
+  * Initial release
+
+ -- Dominik Schulz <lkml@ds.gauner.org>  Mon, 06 Dec 2010 18:22:40 +0100

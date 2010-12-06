@@ -1,0 +1,26 @@
+This work was packaged for Debian by:
+
+    Dominik Schulz <dominik.schulz@gauner.org> on Sat, 04 Dec 2010 10:00:00 +0100
+
+It was downloaded from:
+
+    http://vboxadm.gauner.org/ 
+
+Upstream Author(s):
+
+    Dominik Schulz <dominik.schulz@gauner.org> 
+
+Copyright:
+
+    Copyright (C) 2010 Dominik Schulz 
+
+License:
+
+    GPL 2+ 
+
+The Debian packaging is:
+
+    Copyright (C) 2010 Dominik Schulz <dominik.schulz@gauner.org>
+
+and is licensed under the GPL version 2 or later,
+see "/usr/share/common-licenses/GPL-2".

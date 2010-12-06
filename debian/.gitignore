@@ -1,0 +1,6 @@
+vboxadm/
+*.debhelper.log
+*.debhelper
+patches/
+*.substvars
+files

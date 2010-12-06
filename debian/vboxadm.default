@@ -1,0 +1,9 @@
+# This is the configuration file for /etc/init.d/vboxadm
+
+#
+# Change to true when the SMTP-Proxy is configured
+#
+START_SMTPPROXY="false"
+#
+# Optional arguments to SMTP-Proxy command line
+OPTARGS=""

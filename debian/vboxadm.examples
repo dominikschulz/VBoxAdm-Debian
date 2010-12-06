@@ -1,0 +1,6 @@
+doc/dovecot/
+doc/lighttpd/
+doc/mysql/
+doc/postfix/
+contrib/migration.pl
+conf/vboxadm.conf.dist
