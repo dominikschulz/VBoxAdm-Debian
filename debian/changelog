@@ -1,3 +1,9 @@
+vboxadm (0.0.15-8) unstable; urgency=low
+
+  * Fix postinst script.
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Mon, 06 Dec 2010 21:57:54 +0100
+
 vboxadm (0.0.15-7) unstable; urgency=low
 
   * Fix homedir.
