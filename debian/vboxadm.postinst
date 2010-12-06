@@ -60,7 +60,7 @@ makedir vboxadm root:root 700
 chgrp vboxadm vboxadm 2>/dev/null ||
   addgroup --system vboxadm
 chown vboxadm vboxadm 2>/dev/null ||
-  adduser --system --home /var/liv/vboxadm --no-create-home --ingroup vboxadm --disabled-password vboxadm
+  adduser --system --home /var/lib/vboxadm --no-create-home --ingroup vboxadm --disabled-password vboxadm
 
 rm -f /tmp/vboxadm
 
