@@ -1,0 +1,10 @@
+doc/apache/
+doc/exim/
+doc/dovecot/
+doc/lighttpd/
+doc/mysql/
+doc/postfix/
+contrib/migration.pl
+contrib/lexicons-export.pl
+contrib/lexicons-import.pl
+conf/vboxadm.conf.dist

@@ -1,0 +1,46 @@
+#!/bin/sh -e
+
+# VBoxAdm Common postinst
+# Dominik Schulz <dominik.schulz@gauner.org>
+
+makedir() {
+  if [ ! -d $1 ]; then
+    mkdir $1
+  fi
+  chown $2 $1 && chmod $3 $1
+}
+
+umask 022
+
+# postinst processing
+
+#DEBHELPER#
+
+case "$1" in
+  configure)
+    OLDVERSION="$2"
+    # see below
+    ;;
+  abort-upgrade)
+    exit 0
+    ;;
+  abort-remove|abort-deconfigure)
+    exit 0
+    ;;
+  *)
+    echo "postinst called with unknown argument \`$1'" >&2
+    exit 1
+    ;;
+esac
+
+# make sure that the user exists. the simplest portable way to check that
+# is to chown something.
+makedir /tmp/vboxadm root:root 700
+chgrp vboxadm vboxadm 2>/dev/null ||
+  addgroup --system vboxadm
+chown vboxadm vboxadm 2>/dev/null ||
+  adduser --system --home /var/lib/vboxadm --no-create-home --ingroup vboxadm --disabled-password vboxadm
+
+rm -r /tmp/vboxadm
+
+exit 0

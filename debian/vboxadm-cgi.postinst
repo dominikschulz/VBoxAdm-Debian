@@ -1,0 +1,74 @@
+#!/bin/sh -e
+
+# VBoxAdm CGI postinst
+# Dominik Schulz <dominik.schulz@gauner.org>
+
+lighttpd_install() {
+  if [ ! -f /etc/lighttpd/conf-available/50-vboxadm.conf ]; then
+    if which lighty-enable-mod >/dev/null 2>&1; then
+      ln -s ../../vboxadm/lighttpd.conf /etc/lighttpd/conf-available/50-vboxadm.conf
+      lighty-enable-mod vboxadm cgi
+    fi
+  fi
+}
+
+apache_install() {
+  webserver=$1
+  if [ -d /etc/$webserver/conf.d ] && [ ! -e /etc/$webserver/conf.d/vboxadm.conf ]; then
+    ln -s ../../vboxadm/apache.conf /etc/$webserver/conf.d/vboxadm.conf
+  fi
+}
+
+umask 022
+
+# postinst processing
+
+. /usr/share/debconf/confmodule
+
+#DEBHELPER#
+
+case "$1" in
+  configure)
+    OLDVERSION="$2"
+    # see below
+    ;;
+  abort-upgrade)
+    exit 0
+    ;;
+  abort-remove|abort-deconfigure)
+    exit 0
+    ;;
+  *)
+    echo "postinst called with unknown argument \`$1'" >&2
+    exit 1
+    ;;
+esac
+
+update-rc.d vboxadm-cgi defaults > /dev/null
+
+db_version 2.0
+
+# Configure webserver
+db_get vboxadm/reconfigure-webserver
+webservers="$RET"
+
+for webserver in $webservers; do
+  webserver=${webserver%,}
+  if [ "$webserver" = "lighttpd" ]; then
+    lighttpd_install
+  else
+    apache_install $webserver
+  fi
+  # Reload webserver in any case, configuration might have changed
+  # Redirection of 3 is needed because Debconf uses it and it might
+  # be interhited by the webserver. See bug #446324.
+  if [ -f /etc/init.d/$webserver ]; then
+    if [ -x /usr/sbin/invoke-rc.d ]; then
+      invoke-rc.d --quiet $webserver 3>/dev/null || true
+    else
+      /etc/init.d/$webserver reload 3>/dev/null || true
+    fi
+  fi
+done
+
+exit 0

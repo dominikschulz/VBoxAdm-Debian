@@ -1,0 +1,6 @@
+debian/tmp/var/lib/vboxadm/cgi-bin/vboxadm.pl
+debian/tmp/usr/lib/vboxadm/tpl/*
+debian/tmp/usr/share/man/man8/VBoxAdm::Frontend.8.gz
+debian/tmp/usr/share/perl5/VBoxAdm/Frontend.pm
+debian/tmp/var/lib/vboxadm/htdocs/*
+debian/tmp/usr/lib/vboxadm/bin/cleanup

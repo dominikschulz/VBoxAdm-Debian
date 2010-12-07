@@ -1,0 +1,22 @@
+#!/bin/sh -e
+
+# VBoxAdm SA preinst
+# Dominik Schulz <dominik.schulz@gauner.org>
+
+case "$1" in
+  install)
+    ;;
+  upgrade)
+    version=$2
+    export LANG=C
+    invoke-rc.d --quiet vboxadm stop || true
+    ;;
+  abort-upgrade)
+    ;;
+  *)
+    echo "preinst called with unknown argument \`$1'" >&2
+    exit 1
+    ;;
+esac
+
+#DEBHELPER#

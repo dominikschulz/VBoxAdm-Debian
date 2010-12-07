@@ -1,0 +1,4 @@
+debian/tmp/usr/sbin/vboxadm-smtpproxy
+debian/tmp/usr/share/man/man8/VBoxAdm::SmtpProxy.8.gz
+debian/tmp/usr/share/perl5/MSDW/*
+debian/tmp/usr/share/perl5/VBoxAdm/SmtpProxy.pm
