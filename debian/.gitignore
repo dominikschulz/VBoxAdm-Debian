@@ -4,3 +4,4 @@ vboxadm/
 patches/
 *.substvars
 files
+tmp/

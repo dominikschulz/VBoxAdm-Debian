@@ -1,6 +1,6 @@
-debian/tmp/etc/vboxadm/*
-debian/tmp/usr/share/man/man8/VBoxAdm::Utils.8.gz
-debian/tmp/usr/share/perl5/VBoxAdm/L10N.pm
-debian/tmp/usr/share/perl5/VBoxAdm/L10N/*
-debian/tmp/usr/share/perl5/VBoxAdm/Utils.pm
+etc/vboxadm/*
+usr/share/man/man8/VBoxAdm::Utils.8.gz
+usr/share/perl5/VBoxAdm/L10N.pm
+usr/share/perl5/VBoxAdm/L10N/*
+usr/share/perl5/VBoxAdm/Utils.pm
 
