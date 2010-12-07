@@ -25,7 +25,7 @@ PROVE = /usr/bin/prove -l
 
 # some variables
 NAME = vboxadm
-VERSION = 0.0.15
+VERSION = 0.0.16
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -65,6 +65,7 @@ LIBFILES = \
 	lib/VBoxAdm/L10N/ko.pm \
 	lib/VBoxAdm/L10N/pl.pm \
 	lib/VBoxAdm/L10N/pt.pm \
+	lib/VBoxAdm/L10N/ru.pm \
 	lib/VBoxAdm/L10N/zh.pm \
 	lib/MSDW/SMTP/Client.pm \
 	lib/MSDW/SMTP/Server.pm
