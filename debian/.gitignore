@@ -5,3 +5,7 @@ patches/
 *.substvars
 files
 tmp/
+vboxadm-cgi/
+vboxadm-common/
+vboxadm-sa/
+vboxadm-vacation/
