@@ -82,7 +82,6 @@ case "$1" in
       done
     fi
     rm -rf /etc/vboxadm
-    update-rc.d vboxadm-cgi remove >/dev/null
     ;;
   failed-upgrade|abort-install|abort-upgrade|disappear)
     ;;

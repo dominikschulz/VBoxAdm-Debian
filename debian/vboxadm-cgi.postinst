@@ -44,8 +44,6 @@ case "$1" in
     ;;
 esac
 
-update-rc.d vboxadm-cgi defaults > /dev/null
-
 db_version 2.0
 
 # Configure webserver
