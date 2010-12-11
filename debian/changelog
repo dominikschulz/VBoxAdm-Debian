@@ -1,3 +1,11 @@
+vboxadm (0.0.17-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add new contrib files.
+  * Imported Upstream version 0.0.17
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sat, 11 Dec 2010 13:03:41 +0100
+
 vboxadm (0.0.16-1) unstable; urgency=low
 
   [ Dominik Schulz ]
