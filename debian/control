@@ -2,7 +2,7 @@ Source: vboxadm
 Section: admin
 Priority: extra
 Maintainer: Dominik Schulz <dominik.schulz@gauner.org>
-Build-Depends: debhelper (>= 7.0.50~), perl (>= 5.8), libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, fakeroot, perltidy, libtest-pod-perl, libmail-sender-perl
+Build-Depends: debhelper (>= 7.0.50~), perl (>= 5.9), libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, fakeroot, perltidy, libtest-pod-perl, libmail-sender-perl
 Standards-Version: 3.8.4
 Homepage: http://vboxadm.gauner.org/ 
 #Vcs-Git: git://git.debian.org/collab-maint/vboxadm.git
@@ -32,7 +32,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-common
 Architecture: all
-Depends: perl (>= 5.8), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, adduser, debconf, libtext-csv-xs-perl | libtext-csv-perl, liblocale-maketext-perl
+Depends: perl (>= 5.9), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, adduser, debconf, libtext-csv-xs-perl | libtext-csv-perl, liblocale-maketext-perl
 Recommends: postfix-mysql, mysql-server 
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
