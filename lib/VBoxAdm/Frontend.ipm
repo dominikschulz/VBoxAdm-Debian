@@ -29,6 +29,7 @@ use CGI::Application::Plugin::Authentication;
 use Config::Std;
 use Crypt::GeneratePassword;
 use Data::Password;
+use Sys::Syslog;
 
 use VBoxAdm::Utils '@VERSION@';
 use VBoxAdm::L10N '@VERSION@';
@@ -163,6 +164,9 @@ sub setup {
     # Connect to DBI database, same args as DBI->connect();
     $self->dbh_config($dsn);
 
+    # Prepare connection for UTF-8
+    $self->dbh->do("SET NAMES utf8");
+
     #
     # L10N
     #
@@ -193,9 +197,6 @@ sub setup {
                     },
                     1
                 ],
-
-                #'l10n' => sub { return $self->{lh}->maketext(@_); },
-
                 'l10n' => [
                     sub {
                         my ( $context, @args ) = @_;
@@ -211,6 +212,8 @@ sub setup {
         }
     );
 
+    # to make perlcritic happy
+    return 1;
 }
 
 sub teardown {
@@ -218,14 +221,28 @@ sub teardown {
 
     # Disconnect when done
     $self->dbh->disconnect();
+
+    # Close log
+    closelog();
+
+    # to make perlcritic happy
+    return 1;
 }
 
 #
 # CGI::Application Hooks
 #
-sub cgiapp_init() {
+sub cgiapp_init {
     my $self = shift;
+
+    # Everything should be in UTF-8!
     $self->query->charset('UTF-8');
+
+    # Set up syslog
+    openlog( 'VBoxAdm/Frontend', 'ndelay,nofatal', 'mail' );
+
+    # to make perlcritic happy
+    return 1;
 }
 
 #
@@ -266,12 +283,14 @@ sub log {
 
     if ($msg) {
         my $query = "INSERT INTO log (ts,msg) VALUES(NOW(),?)";
-        my $sth   = $dbh->prepare($query);
+        my $sth   = $dbh->prepare($query)
+          or syslog( 2, 'log - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute($msg) ) {
             $sth->finish();
             return 1;
         }
         else {
+            syslog( 2, 'log - Could not execute Query: %s, Args: %s, Error: %s', $query, $msg, $sth->errstr );
             $sth->finish();
             return;
         }
@@ -288,6 +307,8 @@ sub post_login_callback {
     # get domain id, mailbox id, ip, ...
     $self->get_user_details();
     $self->log_login();
+
+    return 1;
 }
 
 sub log_login {
@@ -386,8 +407,10 @@ sub get_user_details {
 
     my $query = "SELECT m.id,m.domain_id,m.is_superadmin,m.is_domainadmin FROM ";
     $query .= "mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE CONCAT(m.local_part,'\@',d.name) = ?";
-    my $sth = $dbh->prepare($query);
-    $sth->execute( $self->authen->username );
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'get_user_details - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute( $self->authen->username )
+      or syslog( 2, 'get_user_details - Could not prepare Query: %s, Args: %s', $query, $self->authen->username );
     my ( $mailbox_id, $domain_id, $is_superadmin, $is_domainadmin ) = $sth->fetchrow_array();
     $sth->finish();
 
@@ -427,13 +450,15 @@ sub get_domain_byid {
     my $self      = shift;
     my $domain_id = shift;
 
-    my $sql = "SELECT name FROM domains WHERE id = ?";
+    my $query = "SELECT name FROM domains WHERE id = ?";
 
     # Get our database connection
     my $dbh = $self->dbh();
 
-    my $sth = $dbh->prepare($sql);
-    $sth->execute($domain_id);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'get_domain_byid - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute($domain_id)
+      or syslog( 2, 'get_domain_byid - Could not execute Query: %s, Args: %s, Error: %s', $query, $domain_id, $sth->errstr );
 
     my $domain = $sth->fetchrow_array() || '';
     $sth->finish();
@@ -509,8 +534,10 @@ sub show_domains {
         push( @args, $self->get_users_domainid() );
     }
     $query .= "ORDER BY name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_domains - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_domains - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -569,13 +596,15 @@ sub show_add_domain {
     }
     elsif ( $domain && $create_domainadmin ) {
         my $query = "INSERT INTO domains (name,is_active) VALUES(?,1)";
-        my $sth   = $dbh->prepare($query);
+        my $sth   = $dbh->prepare($query)
+          or syslog( 2, 'show_add_domain - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
 
         if ( $sth->execute($domain) ) {
             $msg = "Domain '$domain' added";
         }
         else {
-            $msg = "Failed to add Domain '$domain'. DBI Error: " . $sth->errstr;
+            syslog( 2, 'show_add_domain - Could not execute Query: %s, Args: %s, Error: %s', $query, $domain, $sth->errstr );
+            $msg = "Failed to add Domain '$domain'.";
         }
         $sth->finish();
 
@@ -612,11 +641,13 @@ sub show_remove_domain {
     my $msg = '';
     if ($domain_id) {
         my $query = "DELETE FROM domains WHERE id = ?";
-        my $sth   = $dbh->prepare($query);
+        my $sth   = $dbh->prepare($query)
+          or syslog( 2, 'show_remove_domain - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute($domain_id) ) {
             $msg = "Domain #$domain_id removed";
         }
         else {
+            syslog( 2, 'show_remove_domain - Could not execute Query: %s, Args: %s, Error: %s', $query, $domain_id, $sth->errstr );
             $msg = "Failed to remove Domain #$domain_id. DBI Error: " . $sth->errstr;
         }
         $sth->finish();
@@ -662,7 +693,8 @@ sub show_update_domain {
             $query .= "AND id = ?";
             push( @args, $self->get_users_domainid() );
         }
-        my $sth        = $dbh->prepare($query);
+        my $sth = $dbh->prepare($query)
+          or syslog( 2, 'show_update_domain - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         my $status_str = 'disabled';
         if ($is_active) {
             $status_str = 'enabled';
@@ -671,7 +703,8 @@ sub show_update_domain {
             $msg = "Domain #$domain_id $status_str";
         }
         else {
-            $msg = "Failed to set Domain #$domain_id $status_str";
+            syslog( 2, 'show_update_domain - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+            $msg = "Failed to set Domain #$domain_id $status_str.";
         }
         $sth->finish();
 
@@ -728,8 +761,10 @@ sub show_domain_aliases {
         push( @args, $self->get_users_domainid() );
     }
     $query .= "ORDER BY da.name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -767,8 +802,10 @@ sub show_create_domain_alias {
         push( @args, $self->get_users_domainid() );
     }
     $query .= "ORDER BY name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_create_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_create_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -814,12 +851,17 @@ sub show_add_domain_alias {
     }
     elsif ( $domain_alias && $domain_id ) {
         my $query = "INSERT INTO domain_aliases (name,domain_id,is_active) VALUES(?,?,1)";
-        my $sth   = $dbh->prepare($query);
-
+        my $sth   = $dbh->prepare($query)
+          or syslog( 2, 'show_add_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute( $domain_alias, $domain_id ) ) {
             $msg = "Added domain alias '$domain_alias' to domain #$domain_id";
         }
         else {
+            syslog(
+                2, 'show_add_domain_alias - Could not execute Query: %s, Args: %s, Error: %s',
+                $query, join( "-", ( $domain_alias, $domain_id ) ),
+                $sth->errstr
+            );
             $msg = "Failed to add domain alias '$domain_alias' to domain #$domain_id. DBI Errstr: " . $sth->errstr;
         }
         $sth->finish();
@@ -861,11 +903,13 @@ sub show_remove_domain_alias {
             $query .= "AND domain_id = ?";
             push( @args, $self->get_users_domainid() );
         }
-        my $sth = $dbh->prepare($query);
+        my $sth = $dbh->prepare($query)
+          or syslog( 2, 'show_remove_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute(@args) ) {
             $msg = "Domain-Alias #$domain_alias_id removed";
         }
         else {
+            syslog( 2, 'show_remove_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
             $msg = "Failed to remove Domain-Alias #$domain_alias_id. DBI Error: " . $sth->errstr;
         }
     }
@@ -906,8 +950,10 @@ sub show_edit_domain_alias {
         push( @args, $self->get_users_domainid() );
     }
     $query .= " ORDER BY name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_edit_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_edit_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -972,7 +1018,8 @@ sub show_update_domain_alias {
             $query .= "AND domain_id = ?";
             push( @args, $self->get_users_domainid() );
         }
-        my $sth        = $dbh->prepare($query);
+        my $sth = $dbh->prepare($query)
+          or syslog( 2, 'show_update_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         my $status_str = 'disabled';
         if ( $is_active eq 'on' || $is_active eq 'true' ) {
             $status_str = 'enabled';
@@ -982,7 +1029,8 @@ sub show_update_domain_alias {
             $msg .= "Domain-Alias #$domain_alias_id $status_str. ";
         }
         else {
-            $msg .= "Failed to set Domain-Alias #$domain_alias_id $status_str. ";
+            syslog( 2, 'show_update_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+            $msg .= "Failed to set Domain-Alias #$domain_alias_id $status_str.";
         }
     }
 
@@ -993,11 +1041,17 @@ sub show_update_domain_alias {
     }
     elsif ( $domain_alias_id && $target ) {
         my $query = "UPDATE domain_aliases SET domain_id = ? WHERE id = ?";
-        my $sth   = $dbh->prepare($query);
+        my $sth   = $dbh->prepare($query)
+          or syslog( 2, 'show_update_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute( $target, $domain_alias_id ) ) {
             $msg .= "Domain-Alias #$domain_alias_id redirected to Domain #$target";
         }
         else {
+            syslog(
+                2, 'show_update_domain_alias - Could not execute Query: %s, Args: %s, Error: %s',
+                $query, join( "-", ( $target, $domain_alias_id ) ),
+                $sth->errstr
+            );
             $msg .= "Failed to redirect Domain-Alias #$domain_alias_id to #$target";
         }
     }
@@ -1046,8 +1100,10 @@ sub show_aliases {
         push( @args, $self->get_users_domainid() );
     }
     $query .= "ORDER BY a.local_part,d.name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_aliases - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_aliases - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @aliases = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1084,8 +1140,10 @@ sub show_create_alias {
         push( @args, $self->get_users_domainid() );
     }
     $query .= "ORDER BY name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_create_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_create_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1136,11 +1194,17 @@ sub show_add_alias {
     }
     elsif ( $local_part && $domain_id && $goto ) {
         my $query = "INSERT INTO aliases (domain_id,local_part,goto,is_active) VALUES(?,?,?,1)";
-        my $sth   = $dbh->prepare($query);
+        my $sth   = $dbh->prepare($query)
+          or syslog( 2, 'show_add_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute( $domain_id, $local_part, $goto ) ) {
             $msg = "Alias $local_part @ $domain_id to $goto added";
         }
         else {
+            syslog(
+                2, 'show_add_alias - Could not execute Query: %s, Args: %s, Error: %s',
+                $query, join( "-", ( $domain_id, $local_part, $goto ) ),
+                $sth->errstr
+            );
             $msg = "Failed to add alias $local_part @ $domain_id => $goto. DBI-Errstr: " . $sth->errstr;
         }
         $sth->finish();
@@ -1183,11 +1247,13 @@ sub show_remove_alias {
             $query .= "AND domain_id = ?";
             push( @args, $self->get_users_domainid() );
         }
-        my $sth = $dbh->prepare($query);
+        my $sth = $dbh->prepare($query)
+          or syslog( 2, 'show_remove_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute(@args) ) {
             $msg = "Alias #$alias_id removed";
         }
         else {
+            syslog( 2, 'show_remove_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
             $msg = "Failed to remove Alias #$alias_id. DBI Error: " . $sth->errstr;
         }
     }
@@ -1226,8 +1292,10 @@ sub show_edit_alias {
         $query .= "AND a.domain_id = ?";
         push( @args, $self->get_users_domainid() );
     }
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_edit_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_edit_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
     my @row = $sth->fetchrow_array();
 
     my %params = (
@@ -1276,7 +1344,8 @@ sub show_update_alias {
             $query .= "AND domain_id = ?";
             push( @args, $self->get_users_domainid() );
         }
-        my $sth        = $dbh->prepare($query);
+        my $sth = $dbh->prepare($query)
+          or syslog( 2, 'show_update_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         my $status_str = 'disabled';
         if ($is_active) {
             $status_str = 'enabled';
@@ -1285,6 +1354,7 @@ sub show_update_alias {
             $msg .= "Alias #$alias_id $status_str.";
         }
         else {
+            syslog( 2, 'show_update_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
             $msg .= "Failed to set Alias #$alias_id $status_str.";
         }
     }
@@ -1298,11 +1368,13 @@ sub show_update_alias {
     }
     elsif ( $alias_id && $target ) {
         my $query = "UPDATE aliases SET goto = ? WHERE id = ?";
-        my $sth   = $dbh->prepare($query);
+        my $sth   = $dbh->prepare($query)
+          or syslog( 2, 'show_mailboxes - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute( $target, $alias_id ) ) {
             $msg .= "Alias #$alias_id redirected to $target";
         }
         else {
+            syslog( 2, 'show_mailboxes - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", ( $target, $alias_id ) ), $sth->errstr );
             $msg .= "Failed to redirect Alias #$alias_id to $target";
         }
     }
@@ -1357,8 +1429,10 @@ sub show_mailboxes {
 
     # finalize query
     $query .= " ORDER BY m.local_part,d.name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_mailboxes - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_mailboxes - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @mailboxes = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1414,8 +1488,10 @@ sub show_create_mailbox {
         push( @args, $self->get_users_domainid() );
     }
     $query .= "ORDER BY name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_create_mailbox - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_create_mailbox - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1490,7 +1566,8 @@ sub show_add_mailbox {
     }
     elsif ( $domain_id && $username && $password && $name && $password eq $password_2 ) {
         my $query = "INSERT INTO mailboxes (domain_id,local_part,password,is_active) VALUES(?,?,?,?)";
-        my $sth   = $dbh->prepare($query);
+        my $sth   = $dbh->prepare($query)
+          or syslog( 2, 'show_add_mailbox - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute( $domain_id, $username, $password, $is_active ) ) {
             $msg .= "Added Mailbox $username @ #$domain_id for $name";
 
@@ -1507,7 +1584,12 @@ sub show_add_mailbox {
             &VBoxAdm::Utils::sendmail( 'vboxadm@localhost', $emsg );
         }
         else {
-            $msg = "Failed to add Mailbox $username @ #$domain_id for $name. DBI Error: " . $sth->errstr;
+            syslog(
+                2, 'show_add_mailbox - Could not execute Query: %s, Args: %s, Error: %s',
+                $query, join( "-", ( $domain_id, $username, $password, $is_active ) ),
+                $sth->errstr
+            );
+            $msg = "Failed to add Mailbox $username @ #$domain_id for $name.";
         }
         $sth->finish();
     }
@@ -1550,11 +1632,13 @@ sub show_remove_mailbox {
             $query .= "AND domain_id = ?";
             push( @args, $self->get_users_domainid() );
         }
-        my $sth = $dbh->prepare($query);
+        my $sth = $dbh->prepare($query)
+          or syslog( 2, 'show_remove_mailbox - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute(@args) ) {
             $msg = "Mailbox #$mailbox_id removed";
         }
         else {
+            syslog( 2, 'show_remove_mailbox - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
             $msg = "Failed to remove Mailbox #$mailbox_id DBI Error: " . $sth->errstr;
         }
     }
@@ -1597,8 +1681,10 @@ sub show_edit_mailbox {
         $query .= "AND m.domain_id = ?";
         push( @args, $self->get_users_domainid() );
     }
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_edit_mailbox - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_edit_mailbox - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
     my @row = $sth->fetchrow_array();
     $sth->finish();
 
@@ -1792,12 +1878,14 @@ sub show_update_mailbox {
 
         # at least on option has changed
         if ( scalar(@params) > 1 ) {
-            my $sth = $dbh->prepare($query);
+            my $sth = $dbh->prepare($query)
+              or syslog( 2, 'show_update_mailbox - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
 
             if ( $sth->execute(@params) ) {
                 $msg .= "Updated Mailbox #$mailbox_id. ";
             }
             else {
+                syslog( 2, 'show_update_mailbox - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @params ), $sth->errstr );
                 $msg .= "Failed to update Mailbox #$mailbox_id. Query: $query, Params: '" . join( "-", @params ) . "', DBI Error: " . $sth->errstr;
             }
         }
@@ -1847,8 +1935,10 @@ sub show_log {
         push( @args, $search_arg );
     }
     $query .= "ORDER BY ts DESC LIMIT 30";
-    my $sth = $dbh->prepare($query);
-    $sth->execute(@args);
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_log - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute(@args)
+      or syslog( 2, 'show_log - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @log = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1892,8 +1982,10 @@ sub show_admins {
     my $query = "SELECT m.id,m.local_part,m.is_active,d.name,m.is_domainadmin,m.is_superadmin ";
     $query .= "FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE m.is_superadmin ";
     $query .= "OR m.is_domainadmin ORDER BY m.is_superadmin,m.is_domainadmin,m.local_part,d.name";
-    my $sth = $dbh->prepare($query);
-    $sth->execute();
+    my $sth = $dbh->prepare($query)
+      or syslog( 2, 'show_admins - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+    $sth->execute()
+      or syslog( 2, 'show_admins - Could not execute Query: %s, Args: none, Error: %s', $query, $sth->errstr );
 
     my @admins = ();
     while ( my @row = $sth->fetchrow_array() ) {

@@ -40,7 +40,7 @@ How to Install VBoxAdm
 - Postfix 2.6+
 
 Debian based (Debian, Ubuntu):
-  aptitude install perl perltidy libdbi-perl libdbd-mysql-perl libconfig-std-perl libtest-pod-perl libmail-sender-perl libcgi-application-perl libcgi-application-basic-plugin-bundle-perl libcgi-application-extra-plugin-bundle-perl famfamfam-silk-png libmime-encwords-perl libhtml-clean-perl libtemplate-perl lighttpd mysql-server php5-cgi postfix dovecot-imapd libcrypt-generatepassword-perl libdata-password-perl
+  aptitude install perl perltidy libdbi-perl libdbd-mysql-perl libconfig-std-perl libtest-pod-perl libmail-sender-perl libcgi-application-perl libcgi-application-basic-plugin-bundle-perl libcgi-application-extra-plugin-bundle-perl famfamfam-silk-png libmime-encwords-perl libhtml-clean-perl libtemplate-perl lighttpd mysql-server php5-cgi postfix postfix-pcre postfix-mysql dovecot-imapd libcrypt-generatepassword-perl libdata-password-perl
 
 Red Hat based (RHEL, CentOS, Fedora):
   yum install perl perltidy perl-DBI (and others)
@@ -88,10 +88,6 @@ $> mysql -uroot -p<MYSQL-ROOT-PW>
 mysql> CREATE DATABASE vboxadm;
 mysql> CREATE DATABASE roundcube;
 
-* Load Schema
--------------
-$> mysql -uroot -p vboxadm < doc/mysql/schema.sql
-
 * Create Database Accounts
 --------------------------
 - vboxadm
@@ -120,6 +116,9 @@ $> mysql -uvboxadm_user -p<PASSWORD> vboxadm -e 'SHOW TABLES'
 Enable cgi (or fastcgi) and symlink the lighttpd/12-vboxadm.conf to /etc/lighttpd/conf-enabled/12-vboxadm.conf.
 Restart lighttpd.
 
+Debian: The debconf script should ask during package installation for webservers to set up. Run dpkg-reconfigure vboxadm-cgi to change
+the selection.
+
 * Configure Postfix
 -------------------
 Copy all files and subdirs of doc/postfix to /etc/postfix.
@@ -132,6 +131,15 @@ you've choosen for the MySQL user postfix.
 
 Change to /etc/postfix and create the database maps:
 $> make maps
+
+If you haven't done so already install postgrey and policyd-weight:
+ $> aptitude install postgrey policyd-weight
+ 
+Adjust the port to 60000 in /etc/default/postgrey and restart postgrey:
+ $> /etc/init.d/postgrey restart
+ 
+Open the file /etc/postfix/main.cf and the variables myhostname, virtual_minimum_uid, virtual_uid_maps and virtual_gid_maps.
+Set virtual_minimum_uid, virtual_uid_maps and virtual_gid_maps to the uid and gid of the user vmail.
 
 * Configure Dovecot
 -------------------
@@ -170,6 +178,13 @@ dbpass=<PASSWORD>
 dbdb=vboxadm
 dbhost=localhost
 
+* Initialize the Database
+-------------------------
+Initialize the Database:
+	$> mysql -uvboxadm -p<PASSWORD> vboxadm < doc/mysql/schema.sql
+
+Debian: The schema is located at /usr/share/doc/vboxadm-common/examples/mysql/schema.sql!
+
 * Configure Vacation
 --------------------
 The vacation script is called from within Postfix's master.cf.
@@ -207,6 +222,9 @@ Variable: max_spare_servers, Default Value: 20, Description: Have no more than t
 Variable: max_requests, Default Value: 250, Description: Each fork should process this many requests and than exit
 Variable: nsloglevel, Default Value: 2, Description: Verbosity.
 Variable: logsock, Default Value: unix, Description: Syslog Logsock.
+
+Debian: Enable the SMTP-Proxy be setting the variable
+START_SMTPPROXY in the file /etc/default/vboxadm-sa to true.
 
 * Create your Siteadmin
 -----------------------
@@ -267,7 +285,34 @@ $rcmail_config['plugins'] = array('password','managesieve', 'vacation');
 
 * Setup SSL Certificates
 ------------------------
-TODO
+For SSL connectivity (recommended!) either get a commerical certificate,
+a free one from cacert.org or as self signed one.
+
+First you need to generate a private key:
+ $> openssl genrsa -out server.key 2048
+ 
+Then you can generate a certificate signing request (CSR):
+ $> openssl req -new -key server.key -out server.csr
+
+Either submit this CSR to your certificate vendor or sign it yourself.
+A self signed certificate negates the security gain of SSL, but
+for testing and the initial setup it is ok. But remember to replace the
+self signed certificate later before you go into production.
+
+To create a self-signed certificate we use openssl again:
+ $> openssl x509 -req -days 3650 -in server.csr -signkey server.key -out server.crt
+
+Copy the generated keyfile and certificate to the appropirate places.
+In debian installations this would be
+ /etc/ssl/private/hostname.key
+and
+ /etc/ssl/certs/hostname.crt
+
+Make sure to enter the correct pathnames in the files
+ /etc/dovecot/dovecot.conf
+ /etc/postfix/main.cf
+and
+ /etc/lighttpd/conf-enabled/10-ssl.conf.
 
 * Test your Setup
 -----------------

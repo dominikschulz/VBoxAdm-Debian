@@ -25,7 +25,7 @@ PROVE = /usr/bin/prove -l
 
 # some variables
 NAME = vboxadm
-VERSION = 0.0.17
+VERSION = 0.0.18
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -46,6 +46,7 @@ BINFILES = \
 	contrib/migration.pl \
 	contrib/lexicons-export.pl \
 	contrib/lexicons-import.pl \
+	contrib/is_utf8.pl \
 	contrib/mkadmin.pl
 
 LIBFILES = \
