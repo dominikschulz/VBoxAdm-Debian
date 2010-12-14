@@ -1,3 +1,11 @@
+vboxadm (0.0.18-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Depend on Perl 5.9+.
+  * Imported Upstream version 0.0.18
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Tue, 14 Dec 2010 18:03:25 +0100
+
 vboxadm (0.0.17-1) unstable; urgency=low
 
   [ Dominik Schulz ]
