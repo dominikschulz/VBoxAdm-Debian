@@ -25,7 +25,7 @@ PROVE = /usr/bin/prove -l
 
 # some variables
 NAME = vboxadm
-VERSION = 0.0.19
+VERSION = 0.0.20
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -117,7 +117,7 @@ quick-install: real-install
 
 install: clean real-install
 
-real-install: all test man
+real-install: all test man rcvacation
 	$(INSTALL) -d $(BINDIR) $(SBINDIR) $(DESTDIR)/etc
 	$(INSTALL) -d $(CFGDIR)/vboxadm
 	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/MSDW/SMTP
