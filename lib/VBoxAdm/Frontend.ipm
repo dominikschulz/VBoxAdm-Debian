@@ -1,7 +1,5 @@
 package VBoxAdm::Frontend;
 
-# TODO use require ssl
-
 use base 'CGI::Application';
 
 use strict;
@@ -110,7 +108,6 @@ sub setup {
             TABLES      => [ 'mailboxes', 'domains' ],
             CONSTRAINTS => {
                 "CONCAT(mailboxes.local_part,'\@',domains.name)" => '__CREDENTIAL_1__',
-                'mailboxes.password'                             => '__CREDENTIAL_2__',
                 'mailboxes.is_active'                            => '1',
                 'domains.is_active'                              => '1',
 
@@ -118,6 +115,20 @@ sub setup {
                 # This is bad style, but there is no other way right now.
                 '(mailboxes.is_superadmin OR mailboxes.is_domainadmin) AND 1' => '1',
             },
+            COLUMNS => { 'dovecotpw:mailboxes.password' => '__CREDENTIAL_2__', },
+            FILTERS => {
+                'dovecotpw' => sub {
+
+                    # since we may use salted passwords, we have to do our own
+                    # password verification. a simple string eq would not do.
+                    my $param   = shift;    # unused, always empty
+                    my $plain   = shift;    # password from user
+                    my $pwentry = shift;    # password hash from db
+                    my ( $pwscheme, undef, $salt ) = &VBoxAdm::DovecotPW::split_pass($pwentry);
+                    my $passh = &VBoxAdm::DovecotPW::make_pass( $plain, $pwscheme, $salt );
+                    return $passh;
+                },
+            }
         ],
         LOGOUT_RUNMODE      => 'public_login',
         LOGIN_RUNMODE       => 'public_login',
@@ -244,6 +255,16 @@ sub cgiapp_init {
     # Set up syslog
     openlog( 'VBoxAdm/Frontend', 'ndelay,nofatal', 'mail' );
 
+    # Configure RequireSSL
+    my $ignore_ssl_check = 0;
+    if ( $self->is_shell() || $self->is_localnet() ) {
+        $ignore_ssl_check = 1;
+    }
+    $self->config_requiressl(
+        'keep_in_ssl'  => 1,
+        'ignore_check' => $ignore_ssl_check,
+    );
+
     # to make perlcritic happy
     return 1;
 }
@@ -267,6 +288,7 @@ sub tt_post_process {
 sub tt_pre_process {
     my ( $self, $file, $vars ) = @_;
     $vars->{username}       = $self->authen->username;
+    $vars->{system_domain}  = $self->{config}{'default'}{'domain'} || 'localhost';
     $vars->{version}        = $VERSION;
     $vars->{notify}         = $self->get_notify();
     $vars->{is_superadmin}  = $self->is_superadmin();
@@ -365,6 +387,20 @@ sub is_shell {
     }
     else {
         return;
+    }
+}
+
+sub is_localnet {
+    if ( !$ENV{'REMOTE_ADDR'} ) {
+        return 1;    # shell, coz' local
+    }
+    else {
+        if ( $ENV{'REMOTE_ADDR'} =~ m/^(192\.168|172\.(1[6-9]|2\d|3[0-1])|10)\./ ) {
+            return 1;
+        }
+        else {
+            return;
+        }
     }
 }
 
@@ -1540,6 +1576,13 @@ sub show_add_mailbox {
     my $sa_kill_score  = $q->param('sa_kill_score') || 6.31;
     my $is_superadmin  = 0;
     my $is_domainadmin = 0;
+    my $pwscheme       = $self->{config}{'cgi'}{'pwscheme'} || 'ssha256';
+
+    if ( $is_active && $is_active eq 'on' ) {
+        $is_active = 1;
+    }
+
+    my $system_domain = $self->{config}{'default'}{'domain'} || 'localhost';
 
     if ( $self->is_superadmin() ) {
         $is_superadmin = $q->param('is_superadmin');
@@ -1554,6 +1597,7 @@ sub show_add_mailbox {
     if ( !$password && !$password_2 ) {
         $password = Crypt::GeneratePassword::word( 8, 12 );
         $password_2 = $password;
+        $msg .= 'Generated Password: ' . $password . '. ';
     }
 
     if ( $domain_id && !$self->is_superadmin() && $self->is_domainadmin() && $domain_id != $self->get_users_domainid() ) {
@@ -1571,7 +1615,7 @@ sub show_add_mailbox {
         my $query = "INSERT INTO mailboxes (domain_id,local_part,password,is_active) VALUES(?,?,?,?)";
         my $sth   = $dbh->prepare($query)
           or syslog( 2, 'show_add_mailbox - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
-        if ( $sth->execute( $domain_id, $username, $password, $is_active ) ) {
+        if ( $sth->execute( $domain_id, $username, VBoxAdm::DovecotPW::make_pass( $password, $pwscheme ), $is_active ) ) {
             $msg .= "Added Mailbox $username @ #$domain_id for $name";
 
             # get domain name for sender
@@ -1584,7 +1628,7 @@ sub show_add_mailbox {
             $emsg .= "From: VBoxAdm <vboxadm\@" . $domain_name . ">\r\n";
             $emsg .= "\r\n";
             $emsg .= "Welcome to your new mailbox.";
-            &VBoxAdm::Utils::sendmail( 'vboxadm@localhost', $emsg );
+            &VBoxAdm::Utils::sendmail( 'vboxadm@' . $system_domain, $emsg );
         }
         else {
             syslog(
@@ -1957,8 +2001,6 @@ sub show_log {
         'log'    => \@log,
         'search' => $search,
     );
-
-    # TODO LOW add pagination, see http://cgi-app.org/index.cgi?PagingData
 
     return $self->tt_process( 'log.tpl', \%params );
 }
