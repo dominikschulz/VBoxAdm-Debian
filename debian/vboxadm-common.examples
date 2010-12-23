@@ -8,5 +8,5 @@ contrib/migration.pl
 contrib/mkadmin.pl
 contrib/lexicons-export.pl
 contrib/lexicons-import.pl
-contrib/roundcube-plugin-vacation.tar.gz
+contrib/roundcube-plugin-vboxadm.tar.gz
 conf/vboxadm.conf.dist
