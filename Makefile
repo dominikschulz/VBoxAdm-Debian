@@ -25,7 +25,7 @@ PROVE = /usr/bin/prove -l
 
 # some variables
 NAME = vboxadm
-VERSION = 0.0.22
+VERSION = 0.0.23
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -117,7 +117,7 @@ quick-install: real-install
 
 install: clean real-install
 
-real-install: all test man rcvacation
+real-install: all test man rcvboxadm
 	$(INSTALL) -d $(BINDIR) $(SBINDIR) $(DESTDIR)/etc
 	$(INSTALL) -d $(CFGDIR)/vboxadm
 	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/MSDW/SMTP
@@ -191,8 +191,8 @@ clean:
 	$(RM) -f lib/MSDW/SMTP/*.pm
 	$(RM) -f contrib/roundcube-plugin-vacation.tar.gz
 
-rcvacation:
-	cd contrib/roundcube/plugins/ && tar -cvzf ../../roundcube-plugin-vacation.tar.gz vacation/ && cd ../../../
+rcvboxadm:
+	cd contrib/roundcube/plugins/ && tar -cvzf ../../roundcube-plugin-vboxadm.tar.gz vboxadm/ && cd ../../../
 
 git: tidy all clean
 	$(GIT) status
