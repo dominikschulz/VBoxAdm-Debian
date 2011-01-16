@@ -215,11 +215,6 @@ button {  width: auto; overflow: visible; }
 /* Fix clearfix: blueprintcss.lighthouseapp.com/projects/15318/tickets/5-extra-margin-padding-bottom-of-page */
 .clearfix { zoom: 1; }
 
-
-
-
-
-
  /* Primary Styles
     Author: 
  */
@@ -262,8 +257,8 @@ table {
 }
 
 .button:hover, .button:focus {
-	background: #BCFF36;
-	color: #888888;
+	background: #ff7f00;
+	color: #c13333;
 }
 
 .flat {
@@ -313,7 +308,8 @@ div.login div {
   border: none;
 }
 div.login .login_header {
-  background: #999;
+  /* background: #999; */
+  background-color: #c13333;
   border-bottom: 1px solid #1b2236;
   height: 1.5em;
   padding: 0.45em;
@@ -361,7 +357,7 @@ div.login label {
   border-right: solid 1px #a2aac4;
   padding: 2px 0 2px 18px;
   margin: 0.3em 0;
-  width: 12em;
+  width: 20em;
 }
 /* image courtesy of http://www.famfamfam.com/lab/icons/silk/  */
 #authen_passwordfield {
@@ -373,7 +369,7 @@ div.login label {
   border-right: solid 1px #a2aac4;
   padding: 2px 0 2px 18px;
   margin: 0.3em 0;
-  width: 12em;
+  width: 20em;
 }
 #authen_rememberuserfield {
   clear: left;
@@ -432,72 +428,43 @@ ul.message li.warning {
   color: red;
 }
 
-nav {
-	width: 750px;
-	margin: 0 auto;
-	padding-top: 10px;
-	white-space: nowrap;
-}
+/*
+ * http://cssmenumaker.com/builder/menu_info.php?menu=018#
+ */
 
 nav ul {
+	width: 100%;
+	height: 43px;
+	background: #FFF url("/images/menu-bg.png") top left repeat-x;
+	font-size: 0.8em;
+	font-family: "Lucida Grande", Verdana, sans-serif;
+	font-weight: bold;
+	list-style-type: none;
+	margin: 0; 
 	padding: 0;
-	margin: 0;
-	margin-left:auto;
-	margin-right:auto;
-	list-style: none;
 }
-
-nav li {
-	float: left;
-	background: #efefef;
-	margin-right: 3px;
-	border-top: 4px solid #aaaaaa;
-}
-
-nav li:hover, nav li.sfhover {
-	background: #BFFF00;
-}
-
-nav li ul {
-	position: absolute;
-	width: auto;
-	left: -999em;
-    background: #FFFFFF;
-	border:2px solid white;
-	border-top:none;
-}
-nav li:hover ul, nav li.sfhover ul {
-   left: auto;
-}
-
-
-nav li ul li {
-    float: none;
-	margin-right: 0px;
-	border-top:2px solid white;;
-	text-align:left;
-}
-
-
-
-
-nav a {
+nav ul li {
 	display: block;
-	width: auto;
-	padding: 20px 5px 5px 5px;
-	color: #888888;
+	float: left;
+	margin: 0 0 0 5px;
 }
-
-nav a:hover {
-	color: #888888;
+nav ul li a {
+	height: 43px;
+	color: #777;
+	text-decoration: none;
+	display: block;
+	float: left;
+	line-height: 200%;
+	padding: 8px 15px 0;
 }
-
-
-
-nav li ul li a {
-	padding: 5px 5px 5px 5px;
+nav ul li a:hover {
+	color: #333;
 }
-
+nav ul li a.current {
+	color: #FFF;
+	background: #FFF url("/images/current-bg.png") top left repeat-x;
+	padding: 5px 15px 0;
+}
 
 #main_menu, #edit_form {
 	width: 750px;
@@ -516,10 +483,11 @@ nav li ul li a {
 	text-align: center;
 	font-size: 12px;
 	margin: 0;
-	background: #AFE1A6; /*#b4004a;*/
+	/* background: #AFE1A6; */ /*#b4004a;*/
+	background: #c13333;
 	border: 1px solid #bbb;
 	line-height: 25px;
-	color: #555555;
+	color: #fff;
 }
 
 .hlp_center {
@@ -553,32 +521,39 @@ nav li ul li a {
 }
 
 #main_menu a:hover {
-	color: #40B33C; /*#CD6A6A;*/
+	/* color: #40B33C; */
+	/* color: #CD6A6A; */
+	color: #ff7f00;
 	text-decoration: none;
 	padding-left: 4px;
-	border-bottom: 1px solid #40B33C;
-	border-left: 4px solid #40B33C;
+	/* border-bottom: 1px solid #40B33C; */
+	border-bottom: 1px solid #c13333;
+	/* border-left: 4px solid #40B33C; */
+	border-left: 4px solid #c13333;
 }
 
-#overview, #admin_domains, #admin_virtual {
+#overview {
 	width: 750px;
 	margin: 0 auto;
-	background: #AFE1A6; /*#9ACD32;*/
+	/* background: #AFE1A6; */ /*#9ACD32;*/
+	background: #c13333;
 	border: 1px solid #bbb;
+	color: #fff;
 }
 
-h4, P, FORM {
+h4, p, form {
 	display: inline;
 	padding-right: 10px;
 	line-height: 30px;
 }
 
+/*
 nav {
 	text-align: right;
 	width: 750px;
 	margin: 0 auto;
 }
-
+*/
 table {
 	width: 750px;
 	margin: 0px auto;
@@ -596,11 +571,18 @@ thead {
 }
 
 .hilighton {
-	background: #D9FF43; /*#D6FF85;*/ /*#ffdddd;*/
+	/* background: #D9FF43; */
+	/* background: #D6FF85; */
+	/* background: #ffdddd; */
+	background: #ff7f00;
 }
 
 .hilight tr:hover {
-        background: #D9FF43; /*#D6FF85;*/ /*#ffdddd;*/
+	/* background: #D9FF43; */
+	/* background: #D6FF85; */
+	/* background: #ffdddd; */
+	/* background: #e15e5e; */
+	background: #ff7f00;
 }
 
 
@@ -616,7 +598,7 @@ h3 {
 
 footer {
 	width: 750px;
-	margin: 20px auto;
+	margin: 30px auto;
 	border-top: 1px solid #bbbbbb;
 	background: #efefef;
 	color: #999999;
@@ -645,6 +627,35 @@ div.setup {
 
 div.setup li {
 	padding-bottom:1em;
+}
+
+.info, .success, .warning, .error, .validation {
+	border: 1px solid;
+	margin: 10px;
+	padding: 15px 10px 15px 50px;
+	background-repeat: no-repeat;
+	background-position: 10px center;
+	width: 500px;
+}
+.info {
+	color: #00529B;
+	background-color: #BDE5F8;
+	background-image: url('/images/knob/knob_info.png');
+}
+.success {
+	color: #4F8A10;
+	background-color: #DFF2BF;
+	background-image:url('/images/knob/knob_valid_green.png');
+}
+.warning {
+	color: #9F6000;
+	background-color: #FEEFB3;
+	background-image: url('/images/knob/knob_attention.png');
+}
+.error {
+	color: #D8000C;
+	background-color: #FFBABA;
+	background-image: url('/images/knob/knob_cancel.png');
 }
 
 /*
