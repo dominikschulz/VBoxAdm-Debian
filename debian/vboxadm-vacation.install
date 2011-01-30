@@ -1,1 +1,3 @@
-usr/lib/vboxadm/vacation
+usr/lib/vboxadm/bin/vacation
+usr/lib/vboxadm/bin/awl
+usr/lib/vboxadm/bin/notify
