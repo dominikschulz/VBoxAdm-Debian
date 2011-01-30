@@ -1,3 +1,11 @@
+vboxadm (0.0.27-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Depend on libdata-page-perl for Pagination.
+  * Imported Upstream version 0.0.27
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sun, 30 Jan 2011 21:36:16 +0100
+
 vboxadm (0.0.26-1) unstable; urgency=low
 
   [ Dominik Schulz ]
