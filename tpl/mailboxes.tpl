@@ -9,6 +9,7 @@
 		</div>
 		[% FOREACH line IN mailboxes %]
 		[% IF loop.first %]
+		[% INCLUDE "page-navigation.tpl" %]
 		<table class="sortable hilight">
 			<thead>
 			<tr>
@@ -55,7 +56,7 @@
 					<a href="vboxadm.pl?rm=edit_mailbox&mailbox_id=[% line.id %]">[% "edit" | l10n %]</a>
 				</td>
 				<td>
-					<a onClick="if(confirm('Do you really want to delete the Account [% line.local_part %]@[% line.domain %]?')) return true; else return false;" href="vboxadm.pl?rm=remove_mailbox&mailbox_id=[% line.id %]">[% "del" | l10n %]</a>
+					<a onClick="if(confirm('[% "Do you really want to delete the Account [_1]@[_2]?" | l10n(line.local_part,line.domain) %]')) return true; else return false;" href="vboxadm.pl?rm=remove_mailbox&mailbox_id=[% line.id %]">[% "del" | l10n %]</a>
 				</td>
 			</tr>
 		[% IF loop.last %]
@@ -63,6 +64,7 @@
 		<tfoot>
 		</tfoot>
 		</table>
+		[% INCLUDE "page-navigation.tpl" %]
 		[% END %]
 		[% END %]
 		<br />
