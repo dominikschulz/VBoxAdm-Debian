@@ -1,0 +1,417 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+use DBI;
+use Getopt::Long;
+use Config::Std;
+
+use VBoxAdm::Utils '@VERSION@';
+
+use Data::Dumper;
+$Data::Dumper::Sortkeys = 1;
+
+my ( $conffile_used, @hooks, %hook, %config, );
+
+# Valid config file locations to try
+my @conffile_locations = qw(
+  vboxadm.conf
+  conf/vboxadm.conf
+  /etc/vboxadm.conf
+  /etc/vboxadm/vboxadm.conf
+);
+
+GetOptions(
+    'verbose|v+' => \$config{'verbose'},
+
+    # shift removes name of the option (config) and leaves the value for unshift
+    # unshift prepends to the list of valid config files so it is tried first
+    'config=s' => sub { shift; unshift( @conffile_locations, @_ ); },
+) or &usage();
+
+# Try all config file locations
+foreach my $loc (@conffile_locations) {
+    if ( -r $loc ) {
+        $conffile_used = $loc;
+        read_config $loc => %config;
+        last;
+    }
+}
+
+# Determine options
+my $dbhost = $config{'default'}{'dbhost'} || 'localhost';
+my $dbuser = $config{'default'}{'dbuser'} || 'vboxadm';
+my $dbpass = $config{'default'}{'dbpass'} || 'vboxadm';
+my $dbport = $config{'default'}{'dbport'} || 3306;
+my $dbdb   = $config{'default'}{'dbdb'}   || 'vboxadm';
+
+$config{'awl'}{'mailserver'} ||= 'postfix';
+$config{'awl'}{'logfile'}    ||= '/var/log/mail.log';
+$config{'awl'}{'whitelist'}  ||= '/etc/postfix/maps/whitelist';
+$config{'awl'}{'verbose'}    ||= 0;
+
+my @ignore_nets = ();    # list of our nets to ignore
+if ( $config{'awl'}{'ignore_net'} ) {
+    if ( ref( $config{'awl'}{'ignore_net'} ) eq 'ARRAY' ) {
+        push( @ignore_nets, @{ $config{'awl'}{'ignore_net'} } );
+    }
+    else {
+        push( @ignore_nets, $config{'awl'}{'ignore_net'} );
+    }
+}
+$config{'awl'}{'ignore_nets'} = \@ignore_nets;
+
+my @only_domains = ();    # list of domains filter for
+if ( $config{'awl'}{'only_domain'} ) {
+    if ( ref( $config{'awl'}{'only_domain'} ) eq 'ARRAY' ) {
+        push( @only_domains, @{ $config{'awl'}{'only_domain'} } );
+    }
+    else {
+        push( @only_domains, $config{'awl'}{'only_domain'} );
+    }
+}
+$config{'awl'}{'only_domains'} = \@only_domains;
+
+my $dsn = "DBI:mysql:host=$dbhost;database=$dbdb;port=$dbport;user=$dbuser;password=$dbpass";
+my $dbh = DBI->connect( $dsn, undef, undef, { RaiseError => 1, } );
+
+if ( !$dbh ) {
+    syslog( 2, 'Could not connect to database with DSN $dsn - From: %s - To: %s - Exiting', $config{'sender'}, $config{'recipient'} );
+    closelog();
+    die("Could not connect to database with DSN $dsn");
+}
+
+# Talk UTF-8 to the database
+# Prepare DB connection for utf8
+$dbh->do("SET NAMES utf8");
+
+my $whitelist = {};    # unique whitelist
+
+if ( $config{'awl'}{'mailserver'} eq 'exim' ) {
+    &parse_exim( $dbh, \%config );
+}
+elsif ( $config{'awl'}{'mailserver'} eq 'postfix' ) {
+    &parse_postfix( $dbh, \%config );
+}
+else {
+    die("Unknown logfile format");
+}
+&store_whitelist( $whitelist, $dbh );
+if ( $config{'awl'}{'mailserver'} eq 'exim' ) {
+    &write_exim_whitelist( $dbh, \%config );
+}
+elsif ( $config{'awl'}{'mailserver'} eq 'postfix' ) {
+    &write_postfix_whitelist( $dbh, \%config );
+}
+exit 0;
+###########################################################################
+# SUBS
+###########################################################################
+
+sub store_whitelist {
+    my $whitelist = shift;
+    my $dbh       = shift;
+
+    my $query = "INSERT INTO awl (email,last_seen,disabled) VALUES(?,NOW(),0) ON DUPLICATE KEY UPDATE last_seen=NOW()";
+    my $sth   = $dbh->prepare($query)
+      or return;
+    foreach my $email ( sort keys %{$whitelist} ) {
+        $sth->execute($email)
+          or return;
+    }
+    $sth->finish();
+
+    return 1;
+}
+
+sub write_exim_whitelist {
+    my $dbh    = shift;
+    my $config = shift;
+
+    if ( open( my $FH, ">", $config->{'awl'}{'whitelist'} ) ) {
+        my $query = "SELECT email FROM awl WHERE NOT disabled ORDER BY email";
+        my $sth   = $dbh->prepare($query);
+        $sth->execute();
+        while ( my $email = $sth->fetchrow_array() ) {
+            print $FH $email . "\n";
+        }
+        $sth->finish();
+        close($FH);
+        return 1;
+    }
+    return;
+}
+
+sub write_postfix_whitelist {
+    my $dbh    = shift;
+    my $config = shift;
+
+    if ( open( my $FH, ">", $config->{'awl'}{'whitelist'} ) ) {
+        my $query = "SELECT email FROM awl WHERE NOT disabled ORDER BY email";
+        my $sth   = $dbh->prepare($query);
+        $sth->execute();
+        while ( my $email = $sth->fetchrow_array() ) {
+            print $FH $email . "\tOK\n";
+        }
+        $sth->finish();
+        close($FH);
+        my $postmap = '/usr/sbin/postmap';
+        my $cmd     = $postmap . ' btree:' . $config->{'awl'}{'whitelist'};
+        if ( -x $postmap ) {
+            my $rv = system($cmd) >> 8;
+            if ( $rv == 0 ) {
+                return 1;
+            }
+            else {
+                return;
+            }
+        }
+    }
+    return;
+}
+
+sub parse_exim {
+    my $dbh    = shift;
+    my $config = shift;
+
+    my %msgs = ();
+    open( my $IN, "<", $config->{'awl'}{'logfile'} ) or die("Could not open file $config->{'awl'}{'logfile'}: $!");
+  LINE: while (<$IN>) {
+        chomp;
+
+        # SMTP-Auth
+        if (m/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (\w{6}-\w{6}-\w{2}) <= (\S+) .* A=(?:plain|fixed)_login/i) {
+            my $datetime = $1;
+            my $qid      = $2;
+            my $from     = $3;
+
+            next unless $datetime;
+            next if ( !$qid || $qid =~ m/statistics/ );
+            next unless $from;
+
+            $msgs{$qid} = 1;
+        }
+        elsif (m/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (\w{6}-\w{6}-\w{2}) <= (\S+) H=[^([]+ (?:\(([^)]+)\))? \[([^]]+)\]/i) {
+            my $datetime = $1;
+            my $qid      = $2;
+            my $from     = $3;
+            my ( $helo, $ip );
+            if ($5) {
+                $helo = $4;
+                $ip   = $5;
+            }
+            else {
+                $ip = $4;
+            }
+
+            next unless $datetime;
+            next unless $ip;
+            next if $from eq '<>';
+            next if &is_ignored_network($ip);
+            next if ( $config->{'awl'}{'only_local_domains'} && !&is_local_domain( $dbh, $from ) );
+            next unless &is_valid_domain($from);
+
+            #print "IP-Authed - From: $from - Helo: $helo - IP: $ip\n";
+
+            $msgs{$qid} = 1;
+        }
+        elsif (m/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (\w{6}-\w{6}-\w{2}) => (\S+) R=dnslookup T=remote_smtp/i) {
+            my $datetime = $1;
+            my $qid      = $2;
+            my $to       = $3;
+
+            next unless $datetime;
+            next if ( !$qid || $qid =~ m/statistics/ );
+            next unless $to;
+
+            if ( $msgs{$qid} ) {
+                $whitelist->{$to}++;
+                delete $msgs{$qid};
+            }
+        }
+    }
+    close($IN);
+}
+
+sub is_valid_domain {
+    my $from   = shift;
+    my $config = shift;
+
+    foreach my $domain ( @{ $config->{'awl'}{'only_domains'} } ) {
+        if ( $from =~ m/\@$domain$/ ) {
+            return 1;
+        }
+    }
+    return;
+}
+
+sub is_local_domain {
+    my $dbh  = shift;
+    my $from = shift;
+
+    my ( $local_part, $domain ) = split /@/, $from;
+
+    return unless $domain;
+
+    my $query = "SELECT COUNT(*) FROM domains WHERE name = ?";
+    my $sth   = $dbh->prepare($query);
+    $sth->execute($domain);
+    my $count = $sth->fetchrow_array();
+    $sth->finish();
+
+    return $count;
+}
+
+sub is_ignored_network {
+    my $ip     = shift;
+    my $config = shift;
+
+    foreach my $net ( @{ $config->{'awl'}{'ignore_nets'} } ) {
+        return 1;
+    }
+    return;
+}
+
+sub parse_postfix {
+    my $dbh    = shift;
+    my $config = shift;
+
+    my %pids = ();
+    my %qids = ();
+
+    # First record all information about this PID
+    # then copy it to the MID table if we have a MID
+    # and if that MID is sent add it to the whitelist table
+
+    open( my $IN, "<", $config->{'awl'}{'logfile'} ) or die("Could not open file $config->{'awl'}{'logfile'}: $!");
+    while (<$IN>) {
+        chomp;
+
+        #print "parse_postfix - Candidate Line: $_\n";
+        if (m/postfix\/smtpd\[(\d+)\]: NOQUEUE: client=(\S+)\[([\d\.]+)\], sasl_method=([A-Z]+), sasl_username=(\S+)\b/) {
+            print "\tnew client connects: $_\n" if $config->{'awl'}{'verbose'};
+
+            # new client connects
+            my $pid           = $1;
+            my $rdns          = $2;
+            my $ip            = $3;
+            my $sasl_method   = $4;
+            my $sasl_username = $5;
+
+            next unless $pid;
+
+            $pids{$pid}{'rdns'}          = $rdns;
+            $pids{$pid}{'ip'}            = $ip;
+            $pids{$pid}{'sasl_method'}   = $sasl_method;
+            $pids{$pid}{'sasl_username'} = $sasl_username;
+
+            print "\t\trdns: $rdns - ip: $ip - sasl_method: $sasl_method - sasl_username: $sasl_username\n" if $config->{'awl'}{'verbose'};
+        }
+        elsif (m/postfix\/smtpd\[(\d+)\]: proxy-accept: END-OF-MESSAGE: .*: queued as (\w{10,12}); from=<([^>]+)> to=<([^>]+)> proto=([A-Z]+) helo=<([^>]+)>/) {
+            print "\tproxy-accept: $_\n";
+            my $pid   = $1;
+            my $qid   = $2;
+            my $from  = $3;
+            my $to    = $4;
+            my $proto = $5;
+            my $helo  = $6;
+
+            next unless $pid;
+
+            if ( $pids{$pid} ) {
+                $pids{$pid}{'qid'}     = $qid;
+                $pids{$pid}{'from'}    = $from;
+                $pids{$pid}{'to'}{$to} = 1;
+                $pids{$pid}{'proto'}   = $proto;
+                $pids{$pid}{'helo'}    = $helo;
+                foreach my $key ( keys %{ $pids{$pid} } ) {
+                    print "\t\textract message id - coyping $key => " . $pids{$pid}{$key} . " from PID $pid to MID $qid\n" if $config->{'awl'}{'verbose'};
+                    $qids{$qid}{$key} = $pids{$pid}{$key};
+                }
+            }
+        }
+        elsif (m/postfix\/qmgr\[(\d+)\]: (\w{10,12}): from=<([^>]+)>, /) {
+            print "\textract from: $_\n" if $config->{'awl'}{'verbose'};
+
+            # extract from
+            my $pid  = $1;
+            my $qid  = $2;
+            my $from = $3;
+
+            next unless $pid;
+
+            if ( $pids{$pid} && $pids{$pid}{'qid'} eq $qid ) {
+                $pids{$pid}{'from'} = $from;
+            }
+
+            print "\t\tfrom: $from\n" if $config->{'awl'}{'verbose'};
+        }
+        elsif (m/postfix\/smtp\[(\d+)\]: (\w{10}): to=<([^>]+)>, .*, status=sent /) {
+            print "\textract to: $_\n" if $config->{'awl'}{'verbose'};
+
+            # extract to
+            my $pid = $1;
+            my $qid = $2;
+            my $to  = $3;
+
+            next unless $pid;
+            next unless $qid;
+
+            $qids{$qid}{'to'}{$to} = 1;
+
+            print "\t\tto: $to\n" if $config->{'awl'}{'verbose'};
+        }
+        elsif (m/postfix\/qmgr\[(\d+)\]: (\w{10,12}): removed/) {
+            print "\twhitelist iff: $_\n" if $config->{'awl'}{'verbose'};
+
+            # whitelist if eglible
+            my $pid = $1;
+            my $qid = $2;
+
+            next unless $pid;
+            next unless $qid;
+
+            print "\t\tDumping data for QID $qid:\n" . Dumper( $qids{$qid} ) . "\n" if $config->{'awl'}{'verbose'};
+            print "\t\tDumping data for PID $pid:\n" . Dumper( $pids{$pid} ) . "\n" if $config->{'awl'}{'verbose'};
+
+            if ( $qids{$qid} ) {
+                if ( $qids{$qid}{'from'} && $qids{$qid}{'to'} && $qids{$qid}{'ip'} ) {
+                    if (   $qids{$qid}{'from'} ne '<>'
+                        && ( ( $qids{$qid}{'sasl_username'} && $qids{$qid}{'sasl_method'} ) || !&is_ignored_network( $qids{$qid}{'ip'}, $config ) )
+                        && &is_valid_domain( $qids{$qid}{'from'}, $config )
+                        && ( !$config->{'awl'}{'only_local_domains'} || &is_local_domain( $dbh, $qids{$qid}{'from'} ) ) )
+                    {
+                        foreach my $to ( keys %{ $qids{$qid}{'to'} } ) {
+                            $whitelist->{$to}++;
+                            print "\t\tWHITELISTED: $to\n" if $config->{'awl'}{'verbose'};
+                        }
+                    }
+                }
+                delete( $qids{$qid} );
+            }
+        }
+        elsif (m/postfix\/smtpd\[(\d+)\]: disconnect from (\S+)\[([\d\.]+)\]/) {
+            print "\tclient disconnects: $_\n" if $config->{'awl'}{'verbose'};
+
+            # disconnect
+            my $pid  = $1;
+            my $rdns = $2;
+            my $ip   = $3;
+
+            next unless $pid;
+
+            if ( $pids{$pid} && $pids{$pid}{'rdns'} eq $rdns && $pids{$pid}{'ip'} eq $ip ) {
+                if ( $pids{$pid}{'qid'} ) {
+                    my $qid = $pids{$pid}{'qid'};
+                    foreach my $key ( keys %{ $pids{$pid} } ) {
+                        $qids{$qid}{$key} = $pids{$pid}{$key};
+                    }
+                }
+                delete( $pids{$pid} );
+            }
+
+            print "\t\tdeleted $pid from pids\n" if $config->{'awl'}{'verbose'};
+        }
+    }
+    close($IN);
+}

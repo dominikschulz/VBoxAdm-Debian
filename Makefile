@@ -25,7 +25,7 @@ PROVE = /usr/bin/prove -l
 
 # some variables
 NAME = vboxadm
-VERSION = 0.0.26
+VERSION = 0.0.27
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -43,6 +43,8 @@ BINFILES = \
 	bin/smtpproxy.pl \
 	cgi-bin/vboxadm.pl \
 	cron/cleanup.pl \
+	cron/awl.pl \
+	cron/notify.pl \
 	contrib/migration.pl \
 	contrib/lexicons-export.pl \
 	contrib/lexicons-import.pl \
@@ -70,6 +72,8 @@ LIBFILES = \
 	lib/VBoxAdm/L10N/pt.pm \
 	lib/VBoxAdm/L10N/ru.pm \
 	lib/VBoxAdm/L10N/zh.pm \
+	lib/VBoxAdm/SMTP/Client.pm \
+	lib/VBoxAdm/SMTP/Server.pm \
 	lib/MSDW/SMTP/Client.pm \
 	lib/MSDW/SMTP/Server.pm
 
@@ -106,12 +110,16 @@ all: $(LIBFILES) $(BINFILES) $(TESTFILES)
 
 lib: $(LIBFILES)
 
+re: clean all
+
 man:
 	mkdir -p doc/man/
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/DovecotPW.ipm > doc/man/VBoxAdm::DovecotPW.8
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/Frontend.ipm > doc/man/VBoxAdm::Frontend.8
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/SmtpProxy.ipm > doc/man/VBoxAdm::SmtpProxy.8
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/Utils.ipm > doc/man/VBoxAdm::Utils.8
+	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/SMTP/Client.ipm > doc/man/VBoxAdm::SMTP::Client.8
+	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/SMTP/Server.ipm > doc/man/VBoxAdm::SMTP::Server.8
 
 quick-install: real-install
 
@@ -120,15 +128,17 @@ install: clean real-install
 real-install: all test man rcvboxadm
 	$(INSTALL) -d $(BINDIR) $(SBINDIR) $(DESTDIR)/etc
 	$(INSTALL) -d $(CFGDIR)/vboxadm
-	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/MSDW/SMTP
+	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/VBoxAdm/SMTP $(LIBDIR)/MSDW/SMTP
 	$(INSTALL) -d $(MANDIR)/man1 $(MANDIR)/man3 $(MANDIR)/man8
 	$(INSTALL) -d $(VBOXLIBDIR)/bin $(VBOXLIBDIR)/tpl
-	$(INSTALL) -g www-data -d $(VHDIR)/cgi-bin $(VHDIR)/htdocs/css $(VHDIR)/htdocs/images
+	$(INSTALL) -g www-data -d $(VHDIR)/cgi-bin $(VHDIR)/htdocs/css $(VHDIR)/htdocs/images/knob
 	$(INSTALL) -g www-data -d $(VHDIR)/htdocs/js/libs $(VHDIR)/htdocs/js/mylibs $(VHDIR)/htdocs/js/profiling
 	$(INSTALL_DATA) doc/man/VBoxAdm::DovecotPW.8 $(MANDIR)/man8/VBoxAdm::DovecotPW.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::Frontend.8 $(MANDIR)/man8/VBoxAdm::Frontend.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::SmtpProxy.8 $(MANDIR)/man8/VBoxAdm::SmtpProxy.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::Utils.8 $(MANDIR)/man8/VBoxAdm::Utils.8
+	$(INSTALL_DATA) doc/man/VBoxAdm::SMTP::Client.8 $(MANDIR)/man8/VBoxAdm::SMTP::Client.8
+	$(INSTALL_DATA) doc/man/VBoxAdm::SMTP::Server.8 $(MANDIR)/man8/VBoxAdm::SMTP::Server.8
 	$(INSTALL_PROGRAM) bin/vacation.pl $(VBOXLIBDIR)/vacation
 	$(INSTALL_PROGRAM) bin/smtpproxy.pl $(SBINDIR)/vboxadm-smtpproxy
 	$(INSTALL_PROGRAM) cgi-bin/vboxadm.pl $(VHDIR)/cgi-bin/vboxadm.pl
@@ -147,9 +157,12 @@ real-install: all test man rcvboxadm
 	$(INSTALL_DATA) lib/VBoxAdm/L10N/it.pm $(LIBDIR)/VBoxAdm/L10N/it.pm
 	$(INSTALL_DATA) lib/VBoxAdm/L10N/pl.pm $(LIBDIR)/VBoxAdm/L10N/pl.pm
 	$(INSTALL_DATA) lib/VBoxAdm/L10N/pt.pm $(LIBDIR)/VBoxAdm/L10N/pt.pm
+	$(INSTALL_DATA) lib/VBoxAdm/SMTP/Client.pm $(LIBDIR)/VBoxAdm/SMTP/Client.pm
+	$(INSTALL_DATA) lib/VBoxAdm/SMTP/Server.pm $(LIBDIR)/VBoxAdm/SMTP/Server.pm
 	$(INSTALL_DATA) tpl/*.tpl $(VBOXLIBDIR)/tpl/
 	$(INSTALL_DATA) res/css/*.css $(VHDIR)/htdocs/css/
 	$(INSTALL_DATA) res/images/*.png $(VHDIR)/htdocs/images/
+	$(INSTALL_DATA) res/images/knob/*.png $(VHDIR)/htdocs/images/knob/
 	$(INSTALL_DATA) res/js/*.js $(VHDIR)/htdocs/js/
 	$(INSTALL_DATA) res/js/libs/*.js $(VHDIR)/htdocs/js/libs/
 #	$(INSTALL_DATA) res/js/mylibs/*.js $(VHDIR)/htdocs/js/mylibs/
@@ -165,6 +178,7 @@ real-install: all test man rcvboxadm
 tidy:
 	$(PERLTIDY) lib/VBoxAdm/*.ipm
 	$(PERLTIDY) lib/VBoxAdm/L10N/*.ipm
+	$(PERLTIDY) lib/VBoxAdm/SMTP/*.ipm
 	$(PERLTIDY) lib/MSDW/SMTP/*.ipm
 	$(PERLTIDY) bin/*.ipl
 	$(PERLTIDY) cgi-bin/*.ipl
@@ -187,6 +201,8 @@ clean:
 	$(RM) -f lib/VBoxAdm/*.pm
 	$(RM) -f lib/VBoxAdm/L10N/*.bak
 	$(RM) -f lib/VBoxAdm/L10N/*.pm
+	$(RM) -f lib/VBoxAdm/SMTP/*.bak
+	$(RM) -f lib/VBoxAdm/SMTP/*.pm
 	$(RM) -f lib/MSDW/SMTP/*.bak
 	$(RM) -f lib/MSDW/SMTP/*.pm
 	$(RM) -f contrib/roundcube-plugin-vboxadm.tar.gz
@@ -198,7 +214,7 @@ git: tidy all clean
 	$(GIT) status
 	$(GIT) diff
 	$(GIT) commit -a || true
-	$(GIT) push kronos
+	$(GIT) push origin
 	test -d /projects/ && $(GIT) push projects || true
 
 help:
