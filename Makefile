@@ -25,7 +25,7 @@ PROVE = /usr/bin/prove -l
 
 # some variables
 NAME = vboxadm
-VERSION = 0.0.29
+VERSION = 0.0.30
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -182,6 +182,8 @@ tidy:
 	$(PERLTIDY) lib/VBoxAdm/L10N/*.ipm
 	$(PERLTIDY) lib/VBoxAdm/SMTP/*.ipm
 	$(PERLTIDY) lib/MSDW/SMTP/*.ipm
+	$(PERLTIDY) t/VBoxAdm/*.it
+	$(PERLTIDY) t/VBoxAdm/L10N/*.it
 	$(PERLTIDY) bin/*.ipl
 	$(PERLTIDY) cgi-bin/*.ipl
 	$(PERLTIDY) cron/*.ipl

@@ -15,8 +15,8 @@ use Mail::SpamAssassin;
 
 use Digest::SHA;
 
-use MSDW::SMTP::Server '@VERSION@';
-use MSDW::SMTP::Client '@VERSION@';
+use VBoxAdm::SMTP::Server '@VERSION@';
+use VBoxAdm::SMTP::Client '@VERSION@';
 use VBoxAdm::Utils '@VERSION@';
 
 our $VERSION = '@VERSION@';
@@ -107,11 +107,16 @@ sub prepare_queries {
     my $self = shift;
 
     # prepare statements
-    # TODO postfix won't/can't do address expansion before, so
+    # postfix won't/can't do address expansion before, so
     # we should check if we can resolve the alias locally and retreive the
     # settings from there!
-    my $sql_userinfo =
-q{SELECT m.id,d.id,m.max_msg_size,m.sa_active,m.sa_kill_score FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE CONCAT(m.local_part,'@',d.name) = ?};
+    # TODO handle mailboxes at alias domains and aliases at alias domains
+    my $sql_userinfo = q{SELECT m.id,d.id,m.max_msg_size,m.sa_active,m.sa_kill_score 
+FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id 
+WHERE CONCAT(m.local_part,'@',d.name) IN 
+(?,
+SELECT a1.goto FROM aliases AS a1 LEFT JOIN domains AS d1 ON a1.domain_id = d1.id WHERE CONCAT(a1.local_part,'@',d1.name) = ?
+)};
     $self->{vbox}->{sth}->{userinfo} = $self->{vbox}->{dbh}->prepare($sql_userinfo);
 
     return 1;
@@ -181,7 +186,7 @@ sub process_request {
 
         # Start the SMTP-Server part which listens to the incoming
         # transaction
-        my $smtp_server = MSDW::SMTP::Server->new( sock => $self->{server}->{client} )
+        my $smtp_server = VBoxAdm::SMTP::Server->new( sock => $self->{server}->{client} )
           or die "Failed to create a listening server: $!\n";
 
         # Start the SMTP-Client part which talks to the internal
@@ -191,7 +196,7 @@ sub process_request {
         my $client = undef;
         foreach my $node ( shuffle @{ $self->{vbox}->{relayhosts} } ) {
             my ( $host, $port ) = split( /:/, $node );
-            $client = MSDW::SMTP::Client->new(
+            $client = VBoxAdm::SMTP::Client->new(
                 interface  => $host,
                 port       => $port,
                 timeout    => 10,
@@ -206,11 +211,13 @@ sub process_request {
         # Pass the inital welcome
         $smtp_server->print( $client->hear() . "\r\n" );
 
+        my $queue_id;    # for logging
+
       LINE: while ( my $what = $smtp_server->chat() ) {
             if ( $what ne '.' ) {
 
                 # Do nothing but pass on the output from the server
-                # MSDW::SMTP::Server will cache all interesting data for us
+                # VBoxAdm::SMTP::Server will cache all interesting data for us
                 $client->say($what);
             }
             else {
@@ -252,9 +259,26 @@ sub process_request {
                 $client->yammer( $smtp_server->{data} );
             }
 
-            # TODO log queue id, remote ip, if authed, etc. after message is accepted
-            $smtp_server->print( $client->hear() . "\r\n" );
+            # extract queue id for logging
+            my $msg = $client->hear();
+
+            # Queue-ID format: http://archives.neohapsis.com/archives/postfix/2010-12/0728.html
+            if ( $what eq '.' && $msg =~ m/^250 .* queued as ([0-9A-F]+)/ ) {
+                $queue_id = $1;
+            }
+            $smtp_server->print( $msg . "\r\n" );
         }    # end-of-while-LINE
+
+        if ($queue_id) {
+
+            # log queue id, remote ip, if authed, etc. after message is accepted
+            my $default = '[UNKNOWN]';
+            my $client  = $smtp_server->{xforward}{addr} || $default;
+            my $helo    = $smtp_server->{xforward}{helo} || $default;
+            my $proto   = $smtp_server->{xforward}{proto} || $default;
+            my $source  = $smtp_server->{xforward}{source} || $default;
+            $self->log( 2, "message-accepted - queued as $queue_id; client=$client helo=$helo proto=$proto source=$source" );
+        }
 
         # Close open connections
         $client->{sock}->close()
@@ -293,13 +317,13 @@ sub max_msg_size {
     if ( $self->{vbox}->{caching} && $self->{cache}->{max_msg_size}->{$email} ) {
         $max_msg_size = $self->{cache}->{max_msg_size}->{$email};
     }
-    elsif ( $self->{vbox}->{sth}->{userinfo}->execute($email) ) {
+    elsif ( $self->{vbox}->{sth}->{userinfo}->execute( $email, $email ) ) {
         my @userinfo = $self->{vbox}->{sth}->{userinfo}->fetchrow_array();
         $max_msg_size = $userinfo[2] || $max_msg_size;
         $self->{cache}->{max_msg_size}->{$email} = $max_msg_size if $self->{vbox}->{caching};
     }
     else {
-        $self->log( 2, "max_msg_size - Excuting userinfo query failed: " . DBI->errstr );
+        $self->log( 2, "max_msg_size - Excuting userinfo query (" . $self->{vbox}->{sth}->{userinfo}->{Statement} . ") failed: " . DBI->errstr );
     }
 
     return $max_msg_size;
@@ -330,7 +354,7 @@ sub sa_block_score {
                 $lowest_kill_score = $sa_kill_score;
             }
         }
-        elsif ( $self->{vbox}->{sth}->{userinfo}->execute($email) ) {
+        elsif ( $self->{vbox}->{sth}->{userinfo}->execute( $email, $email ) ) {
             my @userinfo      = $self->{vbox}->{sth}->{userinfo}->fetchrow_array();
             my $sa_kill_score = $userinfo[4];
             $self->{cache}->{sa_block_score}->{$email} = $sa_kill_score if $self->{vbox}->{caching};
@@ -340,7 +364,7 @@ sub sa_block_score {
             }
         }
         else {
-            $self->log( 2, "sa_block_score - Excuting userinfo query failed: " . DBI->errstr );
+            $self->log( 2, "sa_block_score - Excuting userinfo query (" . $self->{vbox}->{sth}->{userinfo}->{Statement} . ") failed: " . DBI->errstr );
         }
     }
 
@@ -365,13 +389,13 @@ sub want_sa {
         if ( $self->{vbox}->{caching} && defined( $self->{cache}->{want_sa} ) ) {
             $want_sa = $want_sa || $self->{cache}->{want_sa}->{$email} || 0;
         }
-        elsif ( $self->{vbox}->{sth}->{userinfo}->execute($email) ) {
+        elsif ( $self->{vbox}->{sth}->{userinfo}->execute( $email, $email ) ) {
             my @userinfo = $self->{vbox}->{sth}->{userinfo}->fetchrow_array();
             $want_sa = $want_sa || $userinfo[3] || 0;
             $self->{cache}->{want_sa}->{$email} = $userinfo[3] if $self->{vbox}->{caching};
         }
         else {
-            $self->log( 2, "want_sa - Excuting userinfo query failed: " . DBI->errstr );
+            $self->log( 2, "want_sa - Excuting userinfo query (" . $self->{vbox}->{sth}->{userinfo}->{Statement} . ") failed: " . DBI->errstr );
         }
 
     }
@@ -717,7 +741,7 @@ max_requests - Each children will complete this much requests and than exit.
 
 =head1 DEPENDENCIES
 
-VBoxAdm::Utils, VBoxAdm::SmtpProxy, MSDW::SMTP::Client, MSDW::SMTP::Server.
+VBoxAdm::Utils, VBoxAdm::SmtpProxy, VBoxAdm::SMTP::Client, VBoxAdm::SMTP::Server.
 
 =head1 INCOMPATIBILITIES
 
@@ -737,8 +761,8 @@ Dominik Schulz (dominik.schulz@gauner.org)
 
 This implementation was previously based on smtpproxy but switched to
 Net::Server::PreFork later. Large parts of this code are based on the ideas
-of SpamPD, which is itself based on smtpprox, but all code,
-except MSDW::SMTP::*, was written by myself.
+of SpamPD, which is itself based on smtpprox, but all code was written by myself.
+The SMTP Classes are modeled closely after MSDW::SMTP::*.
 
 Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
 
