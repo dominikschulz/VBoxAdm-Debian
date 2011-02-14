@@ -1,3 +1,11 @@
+vboxadm (0.0.31-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Depend on libnet-imap-perl.
+  * Imported Upstream version 0.0.31
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Mon, 14 Feb 2011 21:05:49 +0100
+
 vboxadm (0.0.30-1) unstable; urgency=low
 
   [ Dominik Schulz ]
