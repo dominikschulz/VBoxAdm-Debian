@@ -1,3 +1,12 @@
+vboxadm (0.0.33-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Depend on SpamAssassin.
+  * Depend on libnet-imap-client-perl.
+  * Imported Upstream version 0.0.33
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Tue, 22 Feb 2011 07:20:58 +0100
+
 vboxadm (0.0.32-1) unstable; urgency=low
 
   [ Dominik Schulz ]
