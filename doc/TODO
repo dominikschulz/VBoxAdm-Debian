@@ -38,6 +38,14 @@ Make sure class-C ip subnet auto-whitelists are supported
 -- Translate status messages*
 
 - CGI::Application:
--- add ActionDispatch when Bug #65224 is fixed
+-- add ActionDispatch when Bug #65224 is fixed - test if cgi.fix_pathinfo = 1 solves this issue
+
+- Aliases:
+-- allow multiple entries for each alias, i.e. make UNIQUE(local_part,domain_id,goto) and use GROUP_CONCAT
+
+- FastCGI:
+-- test/debug FastCGI
+-- see http://cgi-app.org/index.cgi?FastCGI
+-- see https://docs.google.com/Doc?docid=0AY-OcCA2-lySZGQzNjNmZzlfNzdnYjRoZGg3Yg&hl=en#FastCGI_8880821961767984
 
 * - in progress
