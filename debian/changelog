@@ -1,3 +1,11 @@
+vboxadm (0.0.35-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Depend on libcgi-fast-perl.
+  * Imported Upstream version 0.0.35
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sat, 26 Feb 2011 11:54:08 +0100
+
 vboxadm (0.0.34-1) unstable; urgency=low
 
   [ Dominik Schulz ]
