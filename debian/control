@@ -2,7 +2,7 @@ Source: vboxadm
 Section: admin
 Priority: extra
 Maintainer: Dominik Schulz <dominik.schulz@gauner.org>
-Build-Depends: debhelper (>= 7.0.50~), perl (>= 5.9), libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, fakeroot, perltidy, libtest-pod-perl, libmail-sender-perl, spamassassin, libnet-imap-client-perl, libcgi-fast-perl
+Build-Depends: debhelper (>= 7.0.50~), perl (>= 5.9), libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, fakeroot, perltidy, libtest-pod-perl, libmail-sender-perl, spamassassin, libnet-imap-client-perl, libcgi-fast-perl,libdigest-perl-md5-perl
 Standards-Version: 3.8.4
 Homepage: http://vboxadm.gauner.org/ 
 #Vcs-Git: git://git.debian.org/collab-maint/vboxadm.git
@@ -54,7 +54,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-cgi
 Architecture: all
-Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.8), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libcgi-application-perl, libcgi-application-basic-plugin-bundle-perl, libcgi-application-extra-plugin-bundle-perl, famfamfam-silk-png, libtemplate-perl, libhtml-clean-perl, libtemplate-perl, libcrypt-generatepassword-perl, libdata-password-perl, lighttpd | apache2 | httpd-cgi, debconf, libtext-csv-xs-perl | libtext-csv-perl, libdigest-md5-perl, libdigest-sha-perl, libdata-page-perl, libcgi-fast-perl
+Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.8), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libcgi-application-perl, libcgi-application-basic-plugin-bundle-perl, libcgi-application-extra-plugin-bundle-perl, famfamfam-silk-png, libtemplate-perl, libhtml-clean-perl, libtemplate-perl, libcrypt-generatepassword-perl, libdata-password-perl, lighttpd | apache2 | httpd-cgi, debconf, libtext-csv-xs-perl | libtext-csv-perl, libdigest-md5-perl, libdigest-sha-perl, libdata-page-perl, libcgi-fast-perl, libdigest-perl-md5-perl
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
  VBoxAdm is a web interface to manage virtual domains and mailboxes
