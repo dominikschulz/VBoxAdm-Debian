@@ -1,3 +1,12 @@
+vboxadm (0.0.38-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Fix init script.
+  * Change path to vboxadm-sa.
+  * Imported Upstream version 0.0.38
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sat, 05 Mar 2011 13:58:58 +0100
+
 vboxadm (0.0.37-1) unstable; urgency=low
 
   [ Dominik Schulz ]
