@@ -1,4 +1,5 @@
 etc/vboxadm/*
+usr/sbin/vboxadm
 usr/share/man/man8/VBoxAdm::Utils.8
 usr/share/perl5/VBoxAdm/L10N.pm
 usr/share/perl5/VBoxAdm/L10N/*
