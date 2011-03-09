@@ -2,6 +2,33 @@
 use strict;
 use warnings;
 
+=begin whatis
+What is the purpose of the mailarchive?
+- revision safe archival of all incoming and outgoing mails
+- search and retrieval of archived mails
+- probably this should later implemented as an local LMTP/SMTP server
+which would eliminate the need to spawn a new perl process for every mail
+- after mail is retrieved it is automatically signed
+- these signatures are re-signed/re-newed every n days/weeks/months
+- it aims to be compliant with the (german) law requiring business entities to
+store exact copy of business mail
+- SQL Schema:
+-- one table for mails, per month/year: archive_body_YYYY_MM (id, blob, checksum)
+-- one table for signature: archive_sign_YYYY_MM (id, blob), i.e. signatures are not calculated "live", rather by a cron
+-- one table for meta-data and searching: archive_metadata (id, tbl, tbl_id, from, to, ...)
+-- maybe a full-text index
+- see http://de.wikipedia.org/wiki/E-Mail-Archivierung
+- see http://search.cpan.org/~frajulac/GnuPG-0.09/GnuPG.pm
+- this really should be an SMTP-Server implementation with VBoxAdm::SMTP::Server and Net::Server::PreFork
+  for these reasons:
+-- postfix will bounce the mail if the transport ever fails (maybe due to a bug or misconfiguration) but
+   will try at least for 5 days to deliver to an smtp server
+-- archival should be on another, secured, host
+- put mailarchive in its own package: vboxadm-ma
+=cut
+
+# TODO turn into Smtp-Server, see smtpproxy.pl
+
 use DBI;
 use Digest::SHA;
 use Getopt::Long;
@@ -11,6 +38,7 @@ use Sys::Syslog;
 
 use VBoxAdm::DB '@VERSION@';
 use VBoxAdm::Utils '@VERSION@';
+use VBoxAdm::Mailarchive '@VERSION@';
 
 my $db_host = 'localhost';
 my $db_user = 'vacation';
@@ -53,6 +81,12 @@ $db_pass = $config{'mailarchive'}{'dbpass'} || $config{'default'}{'dbpass'} || $
 $db_port = $config{'mailarchive'}{'dbport'} || $config{'default'}{'dbport'} || $db_port;
 $db_db   = $config{'mailarchive'}{'dbdb'}   || $config{'default'}{'dbdb'}   || $db_db;
 
+my ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst ) = localtime(time);
+$mon++;
+$year += 1900;
+my $db_archive_table  = 'archive_' . $year . '_' . $mon;
+my $db_metadata_table = 'archive_metadata';
+
 # Check options
 die("No sender given on command line!")    if !$config{'sender'};
 die("No recipient given on command line!") if !$config{'recipient'};
@@ -60,6 +94,15 @@ die("No recipient given on command line!") if !$config{'recipient'};
 binmode( STDIN, ':utf8' );
 
 openlog( 'vboxadm-mailarchive', 'ndelay,nofatal', 'mail' );
+
+# recipient must be "unrolled", it's smth. like "user#domain.tld@vacation.domain.tld" -> "user@domain.tld"
+if ( $config{'recipient'} ) {
+    my $unrolled = &VBoxAdm::Utils::unroll_recipient( $config{'recipient'} );
+    if ($unrolled) {
+        $config{'orig-recipient'} = $config{'recipient'};
+        $config{'recipient'}      = $unrolled;
+    }
+}
 
 ###
 # Parse incoming mail
@@ -71,7 +114,15 @@ my $digest    = Digest::SHA->new(256);
 my $in_header = 1;
 
 my $body = '';
-while ( my $line = <STDIN> ) {
+
+# add X-Envelope-From and X-Envelope-To to preserve original sender/recipient
+my $xenvfrom = 'X-Envelope-From: ' . lc( $config{'sender'} ) . "\r\n";
+$digest->add($xenvfrom);
+$body .= $xenvfrom;
+my $xenvto = 'X-Envelope-To: ' . lc( $config{'recipient'} ) . "\r\n";
+$digest->add($xenvto);
+$body .= $xenvto;
+while ( my $line = <> ) {
     $digest->add($line);
     $body .= $line;
     $line =~ /^$/ and $in_header = 0;
@@ -99,30 +150,29 @@ while ( my $line = <STDIN> ) {
         $line =~ /^(X-(Avas-spam|Spamtest|CRM114|Razor|Pyzor)-status):\s+(Spam)/i and $header{$1} = $3 and $status{'is-spam'} = 1;
         $line =~ /^(X-OSBF-LUA-Score):\s+[0-9\/\.\-\+]+\s+\[([-S])\]/i            and $header{$1} = $3 and $status{'is-spam'} = 1;
     }
-
-    # TODO write to disk (or DB?)
 }
 my $checksum = $digest->hexdigest();
 
-#my $dsn = "DBI:mysql:host=$db_host;database=$db_db;port=$db_port;user=$db_user;password=$db_pass";
-#my $dbh = &VBoxAdm::DB::connect( $dsn );
+my $dsn = "DBI:mysql:host=$db_host;database=$db_db;port=$db_port;user=$db_user;password=$db_pass";
+my $dbh = &VBoxAdm::DB::connect($dsn);
 
-#if ( !$dbh ) {
-#    syslog( 2, 'Could not connect to database with DSN %s - From: %s - To: %s - Exiting', $dsn, $config{'sender'}, $config{'recipient'} );
-#    closelog();
-#    die("Could not connect to database with DSN $dsn");
-#}
+if ( !$dbh ) {
+    syslog( 2, 'Could not connect to database with DSN %s - From: %s - To: %s - Exiting', $dsn, $config{'sender'}, $config{'recipient'} );
+    closelog();
+    die("Could not connect to database with DSN $dsn");
+}
 
-# TODO add cols for checksum and signature
-# my $query = "INSERT DELAYED INTO archive_YYYY_MM (body) VALUES(?);
-# my $sth = &VBoxAdm::DB::prepexec($dbh, $query, $body);
-# $sth->finish;
+# TODO apply exclude/include filters
+
+my $query = "INSERT DELAYED INTO " . $db_archive_table . " (checksum,body) VALUES(?,?)";
+my $sth = &VBoxAdm::DB::prepexec( $dbh, $query, $checksum, $body );
+$sth->finish;
 
 # TODO write metadata and log
 
 closelog();
 
-#$dbh->disconnect();
+$dbh->disconnect();
 exit 0;
 
 ###########################################################################
@@ -201,3 +251,4 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 =cut
+

@@ -25,7 +25,7 @@ PROVE = /usr/bin/prove -l
 
 # some variables
 NAME = vboxadm
-VERSION = 0.0.38
+VERSION = 0.0.39
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -42,16 +42,17 @@ BINFILES = \
 	bin/mailarchive.pl \
 	bin/vacation.pl \
 	bin/smtpproxy.pl \
+	bin/vboxadm.pl \
 	cgi-bin/vboxadm.pl \
 	cgi-bin/vboxadm.fcgi \
 	cron/cleanup.pl \
 	cron/awl.pl \
 	cron/notify.pl \
+	cron/mailarchive.pl \
 	contrib/migration.pl \
 	contrib/lexicons-export.pl \
 	contrib/lexicons-import.pl \
-	contrib/is_utf8.pl \
-	contrib/mkadmin.pl
+	contrib/is_utf8.pl
 
 LIBFILES = \
 	lib/VBoxAdm/API.pm \
@@ -76,11 +77,10 @@ LIBFILES = \
 	lib/VBoxAdm/L10N/pt.pm \
 	lib/VBoxAdm/L10N/ru.pm \
 	lib/VBoxAdm/L10N/zh.pm \
+	lib/VBoxAdm/Mailarchive.pm \
 	lib/VBoxAdm/Migration.pm \
 	lib/VBoxAdm/SMTP/Client.pm \
-	lib/VBoxAdm/SMTP/Server.pm \
-	lib/MSDW/SMTP/Client.pm \
-	lib/MSDW/SMTP/Server.pm
+	lib/VBoxAdm/SMTP/Server.pm
 
 TESTFILES = \
 	t/VBoxAdm/L10N/de.t \
@@ -90,6 +90,7 @@ TESTFILES = \
 	t/VBoxAdm/DovecotPW.t \
 	t/VBoxAdm/Frontend.t \
 	t/VBoxAdm/L10N.t \
+	t/VBoxAdm/Mailarchive.t \
 	t/VBoxAdm/SmtpProxy.t \
 	t/VBoxAdm/Migration.t \
 	t/VBoxAdm/Utils.t
@@ -134,6 +135,7 @@ man:
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/DB.ipm > doc/man/VBoxAdm::DB.8
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/DovecotPW.ipm > doc/man/VBoxAdm::DovecotPW.8
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/Frontend.ipm > doc/man/VBoxAdm::Frontend.8
+	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/Mailarchive.ipm > doc/man/VBoxAdm::Mailarchive.8
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/Migration.ipm > doc/man/VBoxAdm::Migration.8
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/SmtpProxy.ipm > doc/man/VBoxAdm::SmtpProxy.8
 	$(POD2MAN) --center=" " --section=8 --release="vboxadm" lib/VBoxAdm/Utils.ipm > doc/man/VBoxAdm::Utils.8
@@ -147,7 +149,7 @@ install: clean real-install
 real-install: all test man rcvboxadm
 	$(INSTALL) -d $(BINDIR) $(SBINDIR) $(DESTDIR)/etc
 	$(INSTALL) -d $(CFGDIR)/vboxadm
-	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/VBoxAdm/SMTP $(LIBDIR)/MSDW/SMTP
+	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/VBoxAdm/SMTP
 	$(INSTALL) -d $(MANDIR)/man1 $(MANDIR)/man3 $(MANDIR)/man8
 	$(INSTALL) -d $(VBOXLIBDIR)/bin $(VBOXLIBDIR)/tpl
 	$(INSTALL) -g www-data -d $(VHDIR)/cgi-bin $(VHDIR)/htdocs/css $(VHDIR)/htdocs/images/knob
@@ -156,25 +158,27 @@ real-install: all test man rcvboxadm
 	$(INSTALL_DATA) doc/man/VBoxAdm::DB.8 $(MANDIR)/man8/VBoxAdm::DB.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::DovecotPW.8 $(MANDIR)/man8/VBoxAdm::DovecotPW.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::Frontend.8 $(MANDIR)/man8/VBoxAdm::Frontend.8
+	$(INSTALL_DATA) doc/man/VBoxAdm::Mailarchive.8 $(MANDIR)/man8/VBoxAdm::Mailarchive.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::Migration.8 $(MANDIR)/man8/VBoxAdm::Migration.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::SmtpProxy.8 $(MANDIR)/man8/VBoxAdm::SmtpProxy.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::Utils.8 $(MANDIR)/man8/VBoxAdm::Utils.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::SMTP::Client.8 $(MANDIR)/man8/VBoxAdm::SMTP::Client.8
 	$(INSTALL_DATA) doc/man/VBoxAdm::SMTP::Server.8 $(MANDIR)/man8/VBoxAdm::SMTP::Server.8
-	$(INSTALL_PROGRAM) bin/mailarchive.pl $(VBOXLIBDIR)/bin/mailarchive
+	$(INSTALL_PROGRAM) bin/mailarchive.pl $(SBINDIR)/vboxadm-ma
 	$(INSTALL_PROGRAM) bin/vacation.pl $(VBOXLIBDIR)/bin/vacation
 	$(INSTALL_PROGRAM) bin/smtpproxy.pl $(SBINDIR)/vboxadm-sa
+	$(INSTALL_PROGRAM) bin/vboxadm.pl $(SBINDIR)/vboxadm
 	$(INSTALL_PROGRAM) cgi-bin/vboxadm.pl $(VHDIR)/cgi-bin/vboxadm.pl
 	$(INSTALL_PROGRAM) cgi-bin/vboxadm.fcgi $(VHDIR)/cgi-bin/vboxadm.fcgi
 	$(INSTALL_PROGRAM) cron/cleanup.pl $(VBOXLIBDIR)/bin/cleanup
 	$(INSTALL_PROGRAM) cron/awl.pl $(VBOXLIBDIR)/bin/awl
 	$(INSTALL_PROGRAM) cron/notify.pl $(VBOXLIBDIR)/bin/notify
-	$(INSTALL_DATA) lib/MSDW/SMTP/Client.pm $(LIBDIR)/MSDW/SMTP/Client.pm
-	$(INSTALL_DATA) lib/MSDW/SMTP/Server.pm $(LIBDIR)/MSDW/SMTP/Server.pm
+	$(INSTALL_PROGRAM) cron/mailarchive.pl $(VBOXLIBDIR)/bin/mailarchive
 	$(INSTALL_DATA) lib/VBoxAdm/API.pm $(LIBDIR)/VBoxAdm/API.pm
 	$(INSTALL_DATA) lib/VBoxAdm/DB.pm $(LIBDIR)/VBoxAdm/DB.pm
 	$(INSTALL_DATA) lib/VBoxAdm/DovecotPW.pm $(LIBDIR)/VBoxAdm/DovecotPW.pm
 	$(INSTALL_DATA) lib/VBoxAdm/Frontend.pm $(LIBDIR)/VBoxAdm/Frontend.pm
+	$(INSTALL_DATA) lib/VBoxAdm/Mailarchive.pm $(LIBDIR)/VBoxAdm/Mailarchive.pm
 	$(INSTALL_DATA) lib/VBoxAdm/Migration.pm $(LIBDIR)/VBoxAdm/Migration.pm
 	$(INSTALL_DATA) lib/VBoxAdm/SmtpProxy.pm $(LIBDIR)/VBoxAdm/SmtpProxy.pm
 	$(INSTALL_DATA) lib/VBoxAdm/Utils.pm $(LIBDIR)/VBoxAdm/Utils.pm
@@ -216,7 +220,6 @@ tidy:
 	$(PERLTIDY) lib/VBoxAdm/*.ipm
 	$(PERLTIDY) lib/VBoxAdm/L10N/*.ipm
 	$(PERLTIDY) lib/VBoxAdm/SMTP/*.ipm
-	$(PERLTIDY) lib/MSDW/SMTP/*.ipm
 	$(PERLTIDY) t/VBoxAdm/*.it
 	$(PERLTIDY) t/VBoxAdm/L10N/*.it
 	$(PERLTIDY) bin/*.ipl
@@ -247,8 +250,6 @@ clean:
 	$(RM) -f lib/VBoxAdm/SMTP/*.bak
 	$(RM) -f lib/VBoxAdm/SMTP/*.pm.LOG
 	$(RM) -f lib/VBoxAdm/SMTP/*.pm
-	$(RM) -f lib/MSDW/SMTP/*.bak
-	$(RM) -f lib/MSDW/SMTP/*.pm
 	$(RM) -f contrib/roundcube-plugin-vboxadm.tar.gz
 
 rcvboxadm:
@@ -287,6 +288,7 @@ dist-major: test-all git
 
 critic:
 	$(PERLCRITIC) --stern bin/
+	$(PERLCRITIC) --stern lib/
 
 test: all
 	rm -rf .pc/
