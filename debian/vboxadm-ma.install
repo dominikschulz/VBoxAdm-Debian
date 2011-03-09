@@ -1,0 +1,4 @@
+usr/sbin/vboxadm-ma
+usr/share/man/man8/VBoxAdm::Mailarchive.8
+usr/share/perl5/VBoxAdm/Mailarchive.pm
+usr/lib/vboxadm/bin/mailarchive

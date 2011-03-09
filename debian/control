@@ -10,7 +10,7 @@ Homepage: http://vboxadm.gauner.org/
 
 Package: vboxadm
 Architecture: all
-Depends: vboxadm-cgi (= ${binary:Version}), vboxadm-sa (= ${binary:Version}), vboxadm-vacation (= ${binary:Version})
+Depends: vboxadm-cgi (= ${binary:Version}), vboxadm-sa (= ${binary:Version}), vboxadm-vacation (= ${binary:Version}), vboxadm-ma (= ${binary:Version})
 Recommends: postfix-mysql, mysql-server 
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
@@ -114,3 +114,21 @@ Description: Virtual Mail hosting management interface
  Mailservers.
  .
  This package provides the vacation auto-responder.
+
+Package: vboxadm-ma
+Architecture: all
+Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.8), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libnet-server-perl, debconf
+Recommends: mysql-server 
+Description: Virtual Mail hosting management interface
+ VBoxAdm is a web interface to manage virtual domains and mailboxes
+ for a mail transfer agent like Postfix or Exim. The web interface
+ is written in Perl. It relies on a MySQL database and ships
+ with its own anti-spam SMTP-Proxy and vacation auto-responder.
+ .
+ It supports per-domain admins to delegate the management of domains
+ to dedicated domain administrators.
+ .
+ Users can change their password and vacation status through
+ Roundcube plugins.
+ .
+ This package provides the mailarchive.

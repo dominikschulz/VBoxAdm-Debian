@@ -1,0 +1,9 @@
+# This is the configuration file for /etc/init.d/vboxadm-ma
+
+#
+# Change to true when the Mailarchive is configured
+#
+START_MAILARCHIVE="false"
+#
+# Optional arguments to the Mailarchive command line
+OPTARGS=""
