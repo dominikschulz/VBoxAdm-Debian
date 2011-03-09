@@ -121,16 +121,19 @@ smtp-proxy unix -       -       n       -       15  	smtp
 #  ${nexthop} ${user}
 #
 # ====================================================================
+#
 # Dovecot Deliver
 dovecot   unix  -       n       n       -       -       pipe
   flags=DRhu user=vmail:vmail argv=/usr/lib/dovecot/deliver -d ${user}@${domain}
 #
 # ====================================================================
+#
 # Vacation Autoresponder
 vacation  unix	-		n		n		-		-		pipe
   flags=Rq user=vboxadm:vboxadm argv=/usr/lib/vboxadm/bin/vacation -s ${sender} -r ${recipient}
 #
 # ====================================================================
+#
 # Mailarchive
-mailarchive unix -		n		n		-		-		pipe
-  flags=ORhq user=vmail:vmail argv=/usr/lib/vboxadm/bin/mailarchive -s ${sender} -r ${recipient}
+mailarchive unix -      n       n       -       -       pipe
+  flags=FR user=vmail:vmail argv=/usr/lib/vboxadm/bin/mailarchive -s ${sender} -r ${recipient}
