@@ -12,7 +12,8 @@ umask 022
 case "$1" in
   configure)
     OLDVERSION="$2"
-    # see below
+    # Create tables
+    /usr/lib/vboxadm/bin/mailarchive --create
     ;;
   abort-upgrade)
     exit 0
