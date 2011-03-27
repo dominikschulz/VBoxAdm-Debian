@@ -23,10 +23,9 @@ How to Install VBoxAdm
 - Perltidy
 - Perl DBI
 - DBD MySQL
+- Class::Std
 - Config::Std
-- Locale::Maketext
 - Crypt::GeneratePassword
-- Data::Password
 - CGI::Application
 - CGI::Application::Plugin::DBH
 - CGI::Application::Plugin::Redirect
@@ -34,7 +33,17 @@ How to Install VBoxAdm
 - CGI::Application::Plugin::TT
 - CGI::Application::Plugin::RequireSSL
 - CGI::Application::Plugin::Authentication
-- Config::Std
+- Data::Page
+- Data::Password
+- Digest::Perl::MD5
+- FCGI
+- HTML::Clean
+- Locale::Maketext
+- Net::IMAP::Client
+- Net::Server
+- Readonly
+- Template
+- Text::CSV_XS
 - Famfamfam Silk Icons
 - Dovecot 1.2.x (Version 2.x is untested, but should work with minor adustments)
 - Postfix 2.6+
@@ -43,7 +52,7 @@ Debian based (Debian Squeeze, Ubuntu):
   aptitude install perl perltidy libdbi-perl libdbd-mysql-perl libconfig-std-perl libtest-pod-perl libmail-sender-perl libcgi-application-perl libcgi-application-basic-plugin-bundle-perl libcgi-application-extra-plugin-bundle-perl famfamfam-silk-png libmime-encwords-perl libhtml-clean-perl libtemplate-perl lighttpd mysql-server php5-cgi postfix postfix-pcre postfix-mysql dovecot-imapd libcrypt-generatepassword-perl libdata-password-perl
 
 Red Hat based (RHEL, CentOS, Fedora):
-  yum install perl perltidy perl-DBI (and others)
+  yum install perl perltidy perl-DBI spamassassin mysql-server perl-Locale-Maketext-Simple perl-Text-CSV_XS perl-Readonly perl-Net-Server perl-Data-Password perl-Data-Page perl-CGI-Application-Plugin-Authentication perl-CGI-Application-Plugin-TT perl-CGI-Application-Plugin-DBH perl-CGI-Application-Plugin-Redirect perl-CGI-Application-Plugin-Session perl-Template-Toolkit perl-FCGI perl-Class-Std perl-Crypt-GeneratePassword perl-DBD-MySQL perl-DBI
 
 Other Distributions:
 Users of other distributions will have to figure out themself what packages they need to install. If you use a distribution not listed here and have figured out which packages to install tell me and I'll and the information to this file.

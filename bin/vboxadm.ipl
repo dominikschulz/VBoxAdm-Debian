@@ -15,11 +15,20 @@ use Net::SMTP;
 use Net::POP3;
 use Net::IMAP::Client;
 
+use VBoxAdm::DB '@VERSION@';
 use VBoxAdm::Utils '@VERSION@';
 use VBoxAdm::Migration '@VERSION@';
 use VBoxAdm::DovecotPW '@VERSION@';
+use VBoxAdm::API::Alias '@VERSION@';
+use VBoxAdm::API::AWL '@VERSION@';
+use VBoxAdm::API::Domain '@VERSION@';
+use VBoxAdm::API::DomainAlias '@VERSION@';
+use VBoxAdm::API::Mailbox '@VERSION@';
+use VBoxAdm::API::VacationBlacklist '@VERSION@';
+use VBoxAdm::L10N '@VERSION@';
 
-my ( $conffile_used, %config, $email, $mode );
+my ( $conffile_used, %config, @modes, $opts );
+$opts = {};
 
 # Valid config file locations to try
 my @conffile_locations = qw(
@@ -32,11 +41,13 @@ GetOptions(
     'verbose|v+'    => \$config{'verbose'},
     'dry|d!'        => \$config{'dry'},
     'quiet|q!'      => \$config{'quiet'},
+    'force|f!'      => \$config{'force'},
+    'password|p=s'  => \$config{'password'},
+    'name|n=s'      => \$config{'name'},
     'source|s=s'    => \$config{'source'},
     'source-db|d=s' => \$config{'source-db'},
     'truncate!'     => \$config{'truncate'},
-    'username|u=s'  => \$email,
-    '<>'            => sub { my $m = shift; $mode = $m; },
+    '<>'            => sub { my $m = shift; push( @modes, lc($m) ); },
 
     # shift removes name of the option (config) and leaves the value for unshift
     # unshift prepends to the list of valid config files so it is tried first
@@ -58,90 +69,414 @@ $config{'default'}{'dbpass'} ||= '';
 $config{'default'}{'dbport'} ||= 3306;
 $config{'default'}{'dbdb'}   ||= 'vboxadm';
 $config{'cgi'}{'pwscheme'}   ||= 'sha256';
-$mode                        ||= '';
 
-print "#########################\n";
-print ">>>>>>> VBoxAdm <<<<<<<<<\n";
-print "#########################\n";
+print "#########################\n" unless $config{'quiet'};
+print ">>>>>>> VBoxAdm CLI <<<<<\n" unless $config{'quiet'};
+print "#########################\n" unless $config{'quiet'};
 
-# allow more modes:
-# user {add,edit,remove}
-# domain {add,edit,remove}
-# domain_alias {add,edit,remove}
-# ...
+=begin commands
 
-if ( $email || $mode eq 'newadmin' ) {
-    my $dsn =
+Common opts:
+-f - force
+-q - quiet
+-v - verbose
+
+=head1 User
+
+user add [-p <password>] [-n <name>] <email> - Add a new user/mailbox
+user update [-p <password>] [-n <name>] [- ...] <email> - Modify mailbox
+user delete <email> - Delete mailbox
+
+=head1 Alias
+
+alias add <email> <goto>
+alias update <email> <goto>
+alias delete <email>
+
+=head1 Domain
+
+domain add <domain>
+domain update [...] <domain>
+domain delete <domain>
+
+=head1 Domain Alias
+
+domainalias add <domain> <goto>
+domainalias update [...] <domain>
+domainalias delete <domain>
+
+=head1 Vacation Blacklist
+
+vbl add <email>
+
+=head1 AWL
+
+awl add <email>
+awl lock <email>
+
+=head1 Setup
+
+setup - enter interactive setup
+
+=head1 migrate
+
+migrate -s <source-db> -t <source-type>
+
+=cut
+
+#
+# Database connection
+#
+my $dsn =
 "DBI:mysql:host=$config{'default'}{'dbhost'};database=$config{'default'}{'dbdb'};port=$config{'default'}{'dbport'};user=$config{'default'}{'dbuser'};password=$config{'default'}{'dbpass'}";
-    my $dbh = DBI->connect( $dsn, undef, undef, { RaiseError => 0, } );
-    if ( !$dbh ) {
-        print STDERR "Could not connect to database with DSN $dsn. Aborting.\n";
-        exit 1;
-    }
-    if ( &create_siteadmin( $dbh, \%config, undef, $email ) ) {
-        exit 0;
-    }
-    else {
+my $dbh = &VBoxAdm::DB::connect( $dsn, { RaiseError => 0, } );
+
+if ( !$dbh ) {
+    print "Could not connect to DB!\n";
+    exit 1;
+}
+
+#
+# Authentication
+#
+# if user != root -> need to login as domainadmin
+if ( $EFFECTIVE_USER_ID != 0 ) {
+    if ( !&check_login( $dbh, \%config, $opts ) ) {
+        print "Not authorized. Aborting.\n";
         exit 1;
     }
 }
-elsif ( $mode eq 'migrate' ) {
 
-    my $dsn =
-"DBI:mysql:host=$config{'default'}{'dbhost'};database=$config{'default'}{'dbdb'};port=$config{'default'}{'dbport'};user=$config{'default'}{'dbuser'};password=$config{'default'}{'dbpass'}";
-    my $dbh = DBI->connect( $dsn, undef, undef, { RaiseError => 0, } );
+#
+# Localization
+#
+$opts->{Lh}    = VBoxAdm::L10N->get_handle();
+$opts->{Lh_EN} = VBoxAdm::L10N->get_handle('en');
 
-    if ( !$dbh ) {
-        print "Could not connect to DB with DSN $dsn\n";
-        exit 1;
-    }
-
-    if ( !$config{'source'} ) {
-        print "Need source-type\n";
-        exit 1;
-    }
-
-    if ( !$config{'source-db'} ) {
-        $config{'source-db'} = $config{'source'};
-    }
-
-    if ( &VBoxAdm::Migration::migrate( $dbh, \%config, $config{'source'}, $config{'source-db'}, 'vboxadm' ) ) {
-        print "Migration OK\n";
-        exit 0;
-    }
-    else {
-        print "Migration FAILED\n";
-        exit 1;
-    }
-}
-else {
-    if ( $config{'default'}{'setup_done'} ) {
-        print "This application was already setup. Remove the 'setup_done = 1' line from the config\n";
-        print "if you want to run the setup again.\n";
+#
+# Action Dispatching
+#
+if ( !@modes ) {
+    if ( $config{'quiet'} ) {
         exit 1;
     }
     else {
-        print "No mode selected. Running interactive setup ...\n";
-        if ( &interactive( \%config ) ) {
-            exit 0;
-        }
-        else {
-            exit 1;
-        }
+        &interactive( \%config, $opts );
     }
 }
+elsif ( $modes[0] eq 'user' ) {
+    &handle_user( $dbh, \%config, \@modes, $opts );
+}
+elsif ( $modes[0] eq 'alias' ) {
+    &handle_alias( $dbh, \%config, \@modes, $opts );
+}
+elsif ( $modes[0] eq 'domain' ) {
+    &handle_domain( $dbh, \%config, \@modes, $opts );
+}
+elsif ( $modes[0] eq 'domainalias' ) {
+    &handle_domainalias( $dbh, \%config, \@modes, $opts );
+}
+elsif ( $modes[0] eq 'vbl' ) {
+    &handle_vbl( $dbh, \%config, \@modes, $opts );
+}
+elsif ( $modes[0] eq 'awl' ) {
+    &handle_awl( $dbh, \%config, \@modes, $opts );
+}
+elsif ( $modes[0] eq 'setup' ) {
+    &setup( \%config, $opts );
+}
+elsif ( $modes[0] eq 'migrate' ) {
+    &migrate( $dbh, \%config, \@modes, $opts );
+}
+$dbh->disconnect();
+exit 0;
 
 ###########################################################################
 # SUBS
 ###########################################################################
+
+sub handle_user {
+    my $dbh    = shift;
+    my $config = shift;
+    my $modes  = shift;
+    my $opts   = shift || {};
+
+    local $opts->{Password}        = $config->{'password'}         || undef;
+    local $opts->{Name}            = $config->{'name'}             || undef;
+    local $opts->{IsActive}        = $config->{'is_active'}        || undef;
+    local $opts->{MaxMsgSize}      = $config->{'max_msg_size'}     || undef;
+    local $opts->{IsOnVacation}    = $config->{'is_on_vacation'}   || undef;
+    local $opts->{VacationSubject} = $config->{'vacation_subject'} || undef;
+    local $opts->{VacationMessage} = $config->{'vacation_message'} || undef;
+    local $opts->{VacationStart}   = $config->{'vacation_start'}   || undef;
+    local $opts->{VacationEnd}     = $config->{'vacation_end'}     || undef;
+    local $opts->{Quota}           = $config->{'quota'}            || undef;
+    local $opts->{IsDomainadmin}   = $config->{'is_domainadmin'}   || undef;
+    local $opts->{IsSuperadmin}    = $config->{'is_superadmin'}    || undef;
+    local $opts->{SAActive}        = $config->{'sa_active'}        || undef;
+    local $opts->{SAKillScore}     = $config->{'sa_kill_score'}    || undef;
+
+    if ( $modes->[1] eq 'add' ) {
+        &VBoxAdm::API::Mailbox::create( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'update' ) {
+        &VBoxAdm::API::Mailbox::update( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'delete' ) {
+        &VBoxAdm::API::Mailbox::delete( $dbh, $modes->[2], $opts );
+    }
+    else {
+        print "Unknown mode. Choose one of 'add', 'update', 'delete'.\n";
+        exit 1;
+    }
+}
+
+sub handle_alias {
+    my $dbh    = shift;
+    my $config = shift;
+    my $modes  = shift;
+    my $opts   = shift || {};
+
+    local $opts->{Goto}     = $config->{'goto'}      || undef;
+    local $opts->{IsActive} = $config->{'is_active'} || undef;
+
+    if ( $modes->[1] eq 'add' ) {
+        &VBoxAdm::API::Alias::create( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'update' ) {
+        &VBoxAdm::API::Alias::update( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'delete' ) {
+        &VBoxAdm::API::Alias::delete( $dbh, $modes->[2], $opts );
+    }
+    else {
+        print "Unknown mode. Choose one of 'add', 'update', 'delete'.\n";
+        exit 1;
+    }
+}
+
+sub handle_domain {
+    my $dbh    = shift;
+    my $config = shift;
+    my $modes  = shift;
+    my $opts   = shift || {};
+
+    local $opts->{IsActive} = $config->{'is_active'} || undef;
+
+    if ( $modes->[1] eq 'add' ) {
+        my ( $status, $loc, $en ) = &VBoxAdm::API::Domain::create( $dbh, $modes->[2], $opts );
+        print $en. "\n";
+        return $status;
+    }
+    elsif ( $modes->[1] eq 'update' ) {
+        &VBoxAdm::API::Domain::update( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'delete' ) {
+        &VBoxAdm::API::Domain::delete( $dbh, $modes->[2], $opts );
+    }
+    else {
+        print "Unknown mode. Choose one of 'add', 'update', 'delete'.\n";
+        exit 1;
+    }
+}
+
+sub handle_domainalias {
+    my $dbh    = shift;
+    my $config = shift;
+    my $modes  = shift;
+    my $opts   = shift || {};
+
+    local $opts->{IsActive} = $config->{'is_active'} || undef;
+    local $opts->{Goto}     = $config->{'goto'}      || undef;
+
+    if ( $modes->[1] eq 'add' ) {
+        &VBoxAdm::API::DomainAlias::create( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'update' ) {
+        &VBoxAdm::API::DomainAlias::update( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'delete' ) {
+        &VBoxAdm::API::DomainAlias::delete( $dbh, $modes->[2], $opts );
+    }
+    else {
+        print "Unknown mode. Choose one of 'add', 'update', 'delete'.\n";
+        exit 1;
+    }
+}
+
+sub handle_vbl {
+    my $dbh    = shift;
+    my $config = shift;
+    my $modes  = shift;
+    my $opts   = shift || {};
+
+    if ( $modes->[1] eq 'add' ) {
+        &VBoxAdm::API::VacationBlacklist::create( $dbh, $modes->[2], $opts );
+    }
+    else {
+        print "Unknown mode. Choose 'add'.\n";
+        exit 1;
+    }
+}
+
+sub handle_awl {
+    my $dbh    = shift;
+    my $config = shift;
+    my $modes  = shift;
+    my $opts   = shift || {};
+
+    if ( $modes->[1] eq 'add' ) {
+        &VBoxAdm::API::AWL::create( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'lock' ) {
+        local $opts->{Disabled} = 1;
+        &VBoxAdm::API::AWL::update( $dbh, $modes->[2], $opts );
+    }
+    elsif ( $modes->[1] eq 'unlock' ) {
+        local $opts->{Disabled} = 0;
+        &VBoxAdm::API::AWL::update( $dbh, $modes->[2], $opts );
+    }
+    else {
+        print "Unknown mode. Choose one of 'add', 'lock', 'unlock'.\n";
+        exit 1;
+    }
+}
+
+sub migrate {
+    my $dbh    = shift;
+    my $config = shift;
+    my $opts   = shift || {};
+
+    if ( !$config->{'source'} ) {
+        print "Need source-type\n";
+        return;
+    }
+
+    if ( !$config->{'source-db'} ) {
+        $config{'source-db'} = $config{'source'};
+    }
+
+    if ( &VBoxAdm::Migration::migrate( $dbh, \%config, $config{'source'}, $config{'source-db'}, 'vboxadm' ) ) {
+        print "Migration OK\n" unless $config->{'quiet'};
+        return 1;
+    }
+    else {
+        print "Migration FAILED\n" unless $config->{'quiet'};
+        return;
+    }
+}
+
 sub interactive {
+    my $config = shift;
+
+    my @actions = ();
+    push( @actions, "User admin" );                  # 0
+    push( @actions, "Alias admin" );                 # 1
+    push( @actions, "Domain admin" );                # 2
+    push( @actions, "Domain Alias admin" );          # 3
+    push( @actions, "Vacation Blacklist admin" );    # 4
+    push( @actions, "AWL admin" );                   # 5
+    push( @actions, "Setup" );                       # 6
+    push( @actions, "Migration" );                   # 7
+    my ( $num, $item ) = &ask_select( 'Choose an action:', @actions );
+
+    if ( !defined($num) ) {
+        print "User aborted.\n";
+        exit 1;
+    }
+
+    #print "You chose: $num - $item\n";
+    if ( $num == 0 ) {
+
+        # TODO implement
+        print "User-Admin Not yet implemented!\n";
+    }
+    elsif ( $num == 1 ) {
+
+        # TODO implement
+        print "Alias-Admin Not yet implemented!\n";
+    }
+    elsif ( $num == 2 ) {
+
+        # TODO implement
+        print "Domain-Admin Not yet implemented!\n";
+    }
+    elsif ( $num == 3 ) {
+
+        # TODO implement
+        print "DomainAlias-Admin Not yet implemented!\n";
+    }
+    elsif ( $num == 4 ) {
+
+        # TODO implement
+        print "VacationBlacklist-Admin Not yet implemented!\n";
+    }
+    elsif ( $num == 5 ) {
+
+        # TODO implement
+        print "AWL-Admin Not yet implemented!\n";
+    }
+    elsif ( $num == 6 ) {
+
+        # TODO implement
+        print "Setup Not yet implemented!\n";
+    }
+    elsif ( $num == 7 ) {
+
+        # TODO implement
+        print "Migration Not yet implemented!\n";
+    }
+    else {
+        print "Unknown option.\n";
+    }
+    return 1;
+}
+
+sub check_login {
+    my $dbh    = shift;
+    my $config = shift;
+    my $conf   = $ENV{'HOME'} . '/.vboxadm.cnf';
+    my %user_config;
+    if ( -f $conf || $config->{'quiet'} ) {
+        print "check_login - Reading config from $conf ...\n" if $config->{'verbose'};
+        read_config $conf => %user_config;
+    }
+    else {
+        print "No .vboxadm.cnf found in your home.\n";
+        $user_config{'auth'}{'username'} = &ask_string('Please enter the email of an site-admin');
+        $user_config{'auth'}{'password'} = &ask_string('Please enter the password');
+        if ( &ask_yesno('Should I create a .vboxadm.cnf for you?') ) {
+            write_config %user_config => $conf;
+        }
+    }
+
+    # check if login works
+    if ( !&VBoxAdm::Utils::is_valid_address_rfc822( $user_config{'auth'}{'username'} ) ) {
+        print "Invalid email address given.\n" unless $config->{'quiet'};
+        return;
+    }
+    my ( $local_part, $domain ) = split /@/, $user_config{'auth'}{'username'};
+    my $sql = "SELECT m.password,m.is_superadmin FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE m.local_part = ? AND d.name = ?";
+    my $sth = &VBoxAdm::DB::prepexec( $dbh, $sql, $local_part, $domain );
+    my ( $pw, $is_sa ) = $sth->fetchrow_array();
+    $sth->finish();
+    if ( !$is_sa ) {
+        print "You are no siteadmin!\n";
+        return;
+    }
+    if ( !&VBoxAdm::DovecotPW::verify_pass( $user_config{'auth'}{'password'}, $pw ) ) {
+        print "Password invalid!\n";
+        return;
+    }
+    print "Authorized as site-admin " . $user_config{'auth'}{'username'} . "\n" unless $config->{'quiet'};
+    return 1;
+}
+
+sub setup {
     my $config = shift;
     my %do     = ();
 
     # Ask for options
-    if ( !$do{'install-depends'} ) {
-        $do{'install-depends'} = &ask_yesno('Install required packages and perl modules?');
-    }
     if ( !$do{'create-system-accounts'} ) {
         $do{'create-system-accounts'} = &ask_yesno('Create System Accounts?');
     }
@@ -182,32 +517,6 @@ sub interactive {
     ###
     # BASIC
     ###
-    # Install dependecies - only root should attempt that
-    if ( $do{'install-depends'} && $EFFECTIVE_USER_ID == 0 ) {
-        if ( -f '/etc/debian_version' || -f '/etc/ubuntu_version' ) {
-            &install_depends_apt();
-        }
-        elsif ( -f '/etc/SuSE-release' ) {
-
-            # TODO use zypper where possible
-            &install_depends_cpan();
-        }
-        elsif ( -f '/etc/redhat-release' ) {
-
-            # TODO use yum where possible
-            &install_depends_cpan();
-        }
-        elsif ( -f '/etc/fedora-release' ) {
-
-            # TODO use yum where possible
-            &install_depends_cpan();
-        }
-        elsif ( -f '/etc/gentoo-release' ) {
-
-            # TODO use emgere where possible
-            &install_depends_cpan();
-        }
-    }
     my $user_ref;
 
     # create system user and groups (if necessary)
@@ -943,44 +1252,6 @@ sub create_database {
     return $database;
 }
 
-sub install_depends_cpan {
-    my @modules = qw(
-      Carp
-      CGI::Application::Plugin::Authentication CGI::Application::Plugin::DBH CGI::Application::Plugin::Redirect
-      CGI::Application::Plugin::RequireSSL CGI::Application::Plugin::Session CGI::Application::Plugin::TT
-      CGI::Carp Config::Std CPAN Crypt::GeneratePassword Cwd Data::Dumper Data::Page Data::Password
-      DBI Devel::Peek Digest::MD5 Digest::SHA File::Basename File::Temp Getopt::Long IO::File IO::Socket
-      List::Util Mail::SpamAssassin MIME::Base64 Readonly Sys::Syslog Template Test::More Text::CSV_XS Time::HiRes
-    );
-
-    foreach my $module (@modules) {
-        CPAN::Shell->install($module);
-    }
-    return 1;
-}
-
-sub install_depends_apt {
-
-    # this method should no be necessary since the ones installing on debian
-    # should have used the debian package. but in case you install on debian
-    # from source we provide this as courtesy.
-    my @packages = qw(
-      perl libdbi-perl libdbd-mysql-perl libconfig-std-perl libmail-sender-perl libtext-csv-xs-perl liblocale-maketext-perl
-      libcgi-application-perl libcgi-application-basic-plugin-bundle-perl libcgi-application-extra-plugin-bundle-perl
-      famfamfam-silk-png libtemplate-perl libhtml-clean-perl libcrypt-generatepassword-perl libdata-password-perl lighttpd
-      libdigest-sha-perl libdata-page-perl
-    );
-    my $cmd = "aptitude --assume-yes install " . join( " ", @packages );
-    my $rv = system($cmd) >> 8;
-
-    if ( $rv == 0 ) {
-        return 1;
-    }
-    else {
-        return;
-    }
-}
-
 sub create_database_grants {
     my $config      = shift;
     my $dbh         = shift;
@@ -1106,7 +1377,7 @@ sub ask_select {
         }
         my $num = &ask_number( 'Print enter any number between 0 and ' . $i . '. Press enter to abort' );
         if ( defined($num) && $options[$num] ) {
-            return $options[$num];
+            return wantarray ? ( $num, $options[$num] ) : $options[$num];
         }
         else {
             return;
