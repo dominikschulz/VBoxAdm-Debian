@@ -25,7 +25,7 @@ PROVE = /usr/bin/prove -l
 
 # some variables
 NAME = vboxadm
-VERSION = 0.0.43
+VERSION = 0.0.44
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -49,6 +49,7 @@ BINFILES = \
 	cron/awl.pl \
 	cron/notify.pl \
 	cron/mailarchive.pl \
+	contrib/inst_deps.pl \
 	contrib/migration.pl \
 	contrib/lexicons-export.pl \
 	contrib/lexicons-import.pl \
@@ -56,6 +57,12 @@ BINFILES = \
 
 LIBFILES = \
 	lib/VBoxAdm/API.pm \
+	lib/VBoxAdm/API/Alias.pm \
+	lib/VBoxAdm/API/AWL.pm \
+	lib/VBoxAdm/API/Domain.pm \
+	lib/VBoxAdm/API/DomainAlias.pm \
+	lib/VBoxAdm/API/Mailbox.pm \
+	lib/VBoxAdm/API/VacationBlacklist.pm \
 	lib/VBoxAdm/DB.pm \
 	lib/VBoxAdm/DovecotPW.pm \
 	lib/VBoxAdm/Frontend.pm \
@@ -149,7 +156,7 @@ install: clean real-install
 real-install: all test man rcvboxadm
 	$(INSTALL) -d $(BINDIR) $(SBINDIR) $(DESTDIR)/etc
 	$(INSTALL) -d $(CFGDIR)/vboxadm
-	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/VBoxAdm/SMTP
+	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/VBoxAdm/SMTP $(LIBDIR)/VBoxAdm/API
 	$(INSTALL) -d $(MANDIR)/man1 $(MANDIR)/man3 $(MANDIR)/man8
 	$(INSTALL) -d $(VBOXLIBDIR)/bin $(VBOXLIBDIR)/tpl
 	$(INSTALL) -g www-data -d $(VHDIR)/cgi-bin $(VHDIR)/htdocs/css $(VHDIR)/htdocs/images/knob
@@ -175,6 +182,12 @@ real-install: all test man rcvboxadm
 	$(INSTALL_PROGRAM) cron/notify.pl $(VBOXLIBDIR)/bin/notify
 	$(INSTALL_PROGRAM) cron/mailarchive.pl $(VBOXLIBDIR)/bin/mailarchive
 	$(INSTALL_DATA) lib/VBoxAdm/API.pm $(LIBDIR)/VBoxAdm/API.pm
+	$(INSTALL_DATA) lib/VBoxAdm/API/Alias.pm $(LIBDIR)/VBoxAdm/API/Alias.pm
+	$(INSTALL_DATA) lib/VBoxAdm/API/AWL.pm $(LIBDIR)/VBoxAdm/API/AWL.pm
+	$(INSTALL_DATA) lib/VBoxAdm/API/Domain.pm $(LIBDIR)/VBoxAdm/API/Domain.pm
+	$(INSTALL_DATA) lib/VBoxAdm/API/DomainAlias.pm $(LIBDIR)/VBoxAdm/API/DomainAlias.pm
+	$(INSTALL_DATA) lib/VBoxAdm/API/Mailbox.pm $(LIBDIR)/VBoxAdm/API/Mailbox.pm
+	$(INSTALL_DATA) lib/VBoxAdm/API/VacationBlacklist.pm $(LIBDIR)/VBoxAdm/API/VacationBlacklist.pm
 	$(INSTALL_DATA) lib/VBoxAdm/DB.pm $(LIBDIR)/VBoxAdm/DB.pm
 	$(INSTALL_DATA) lib/VBoxAdm/DovecotPW.pm $(LIBDIR)/VBoxAdm/DovecotPW.pm
 	$(INSTALL_DATA) lib/VBoxAdm/Frontend.pm $(LIBDIR)/VBoxAdm/Frontend.pm
@@ -218,6 +231,7 @@ real-install: all test man rcvboxadm
 
 tidy:
 	$(PERLTIDY) lib/VBoxAdm/*.ipm
+	$(PERLTIDY) lib/VBoxAdm/API/*.ipm
 	$(PERLTIDY) lib/VBoxAdm/L10N/*.ipm
 	$(PERLTIDY) lib/VBoxAdm/SMTP/*.ipm
 	$(PERLTIDY) t/VBoxAdm/*.it
@@ -244,6 +258,9 @@ clean:
 	$(RM) -f lib/VBoxAdm/*.bak
 	$(RM) -f lib/VBoxAdm/*.pm.LOG
 	$(RM) -f lib/VBoxAdm/*.pm
+	$(RM) -f lib/VBoxAdm/API/*.bak
+	$(RM) -f lib/VBoxAdm/API/*.pm.LOG
+	$(RM) -f lib/VBoxAdm/API/*.pm
 	$(RM) -f lib/VBoxAdm/L10N/*.bak
 	$(RM) -f lib/VBoxAdm/L10N/*.pm.LOG
 	$(RM) -f lib/VBoxAdm/L10N/*.pm

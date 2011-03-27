@@ -1,0 +1,60 @@
+package VBoxAdm::API::DomainAlias;
+
+use strict;
+use warnings;
+
+use Carp;
+
+use Sys::Syslog;
+
+our $VERSION = '@VERSION@';
+
+sub create {
+    my $dbh   = shift;
+    my $email = shift;
+    my $opts  = shift || {};
+
+    warn "Not yet implemented!\n";
+
+    return;
+}
+
+sub delete {
+    my $dbh   = shift;
+    my $email = shift;
+    my $opts  = shift || {};
+
+    warn "Not yet implemented!\n";
+
+    return;
+}
+
+sub update {
+    my $dbh   = shift;
+    my $email = shift;
+    my $opts  = shift || {};
+
+    warn "Not yet implemented!\n";
+    return;
+}
+
+sub read {
+    my $dbh   = shift;
+    my $email = shift;
+    my $opts  = shift || {};
+
+    warn "Not yet implemented!\n";
+    return;
+}
+
+sub list {
+    my $dbh   = shift;
+    my $email = shift;
+    my $opts  = shift || {};
+
+    warn "Not yet implemented!\n";
+    return;
+}
+
+1;
+__END__
