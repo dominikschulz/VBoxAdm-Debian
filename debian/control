@@ -3,11 +3,10 @@ Section: admin
 Priority: extra
 Maintainer: Dominik Schulz <dominik.schulz@gauner.org>
 Build-Depends: debhelper (>= 7.0.50~), perl (>= 5.9), libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, fakeroot, perltidy, libtest-pod-perl, libmail-sender-perl, spamassassin, libnet-imap-client-perl, libcgi-fast-perl, libdigest-perl-md5-perl, libnet-server-perl, libcrypt-generatepassword-perl, libcgi-application-perl, libcgi-application-extra-plugin-bundle-perl, libdata-password-perl, libdata-page-perl, libreadonly-perl, libtemplate-perl, libhtml-clean-perl, libtext-csv-xs-perl
-
 Standards-Version: 3.8.4
 Homepage: http://vboxadm.gauner.org/ 
-#Vcs-Git: git://git.debian.org/collab-maint/vboxadm.git
-#Vcs-Browser: http://git.debian.org/?p=collab-maint/vboxadm.git;a=summary
+Vcs-Git: git://git.gauner.org/vboxadm-debian.git
+Vcs-Browser: http://git.gauner.org/vboxadm-debian.git/
 
 Package: vboxadm
 Architecture: all
