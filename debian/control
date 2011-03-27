@@ -32,7 +32,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-common
 Architecture: all
-Depends: perl (>= 5.9), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, adduser, debconf, libtext-csv-xs-perl | libtext-csv-perl, liblocale-maketext-perl, libnet-imap-perl
+Depends: perl (>= 5.9), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, adduser, debconf, libtext-csv-xs-perl | libtext-csv-perl, liblocale-maketext-perl, libnet-imap-perl, libreadonly-xs-perl
 Recommends: postfix-mysql, mysql-server 
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
