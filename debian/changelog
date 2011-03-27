@@ -1,3 +1,16 @@
+vboxadm (0.0.44-1) unstable; urgency=low
+
+  [ Niels Nowatzki ]
+  * Added build-dependencies to debian/control
+
+  [ Dominik Schulz ]
+  * Include API and Migration.
+  * Include API modules.
+  * Imported Upstream version 0.0.44
+  * Depend on libreadonly-xs-perl.
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sun, 27 Mar 2011 21:11:08 +0200
+
 vboxadm (0.0.43-1) unstable; urgency=low
 
   [ Dominik Schulz ]
