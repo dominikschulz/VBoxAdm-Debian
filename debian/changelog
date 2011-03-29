@@ -1,3 +1,11 @@
+vboxadm (0.0.45-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Do not fail if mailarchive can not access the DB during install.
+  * Imported Upstream version 0.0.45
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Tue, 29 Mar 2011 19:49:05 +0200
+
 vboxadm (0.0.44-1) unstable; urgency=low
 
   [ Niels Nowatzki ]
