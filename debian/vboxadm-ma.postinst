@@ -13,7 +13,11 @@ case "$1" in
   configure)
     OLDVERSION="$2"
     # Create tables
-    /usr/lib/vboxadm/bin/mailarchive --create
+    # on the first install the db credentials are probably
+    # not configured, so return anyway. This doesn't
+    # render the package unuseable. The user just has
+    # to run this command later or let the cronjob do the work.
+    /usr/lib/vboxadm/bin/mailarchive --create || true
     ;;
   abort-upgrade)
     exit 0
