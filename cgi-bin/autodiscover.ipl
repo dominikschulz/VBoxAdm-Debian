@@ -1,0 +1,208 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use utf8;
+
+use lib qw(../lib);
+
+binmode STDIN,  ":utf8";
+binmode STDOUT, ":utf8";
+binmode STDERR, ":utf8";
+
+use CGI;
+use Config::Std;
+use Sys::Syslog;
+use Template;
+
+my ( $conffile_used, %config, );
+
+# Valid config file locations to try
+my @conffile_locations = qw(
+  vboxadm.conf
+  conf/vboxadm.conf
+  /etc/vboxadm.conf
+  /etc/vboxadm/vboxadm.conf
+);
+
+# Try all config file locations
+foreach my $loc (@conffile_locations) {
+    if ( -r $loc ) {
+        $conffile_used = $loc;
+        read_config $loc => %config;
+        last;
+    }
+}
+
+openlog( 'vboxadm-autoconfig', 'ndelay,nofatal', 'mail' );
+
+# Templates are used to build the mails sent
+my $tpl_config = {
+    INCLUDE_PATH => [ 'tpl', '../tpl', '/usr/lib/vboxadm/tpl' ],
+    POST_CHOMP   => 1,
+};
+
+my $q   = CGI->new;
+my $tpl = Template->new($tpl_config);
+
+my $post_body = $q->param('POSTDATA')     || undef;
+my $email     = $q->param('emailaddress') || undef;
+
+# Outlook
+if ( $post_body && $post_body =~ m/<EMailAddress>([^<]+)<\/EMailAddress>/i ) {
+    $email = $1;
+}
+
+my $imap_hostname = $config{'autodiscover'}{'imap_hostname'} || 'mail.' . $config{'default'}{'domain'};
+my $pop3_hostname = $config{'autodiscover'}{'pop3_hostname'} || 'mail.' . $config{'default'}{'domain'};
+my $smtp_hostname = $config{'autodiscover'}{'smtp_hostname'} || 'mail.' . $config{'default'}{'domain'};
+my $imap_ssl      = $config{'autodiscover'}{'imap_ssl'}      || 1;
+my $imap_tls      = $config{'autodiscover'}{'imap_tls'}      || 1;
+my $pop3_ssl      = $config{'autodsicover'}{'pop3_ssl'}      || 1;
+my $pop3_tls      = $config{'autodiscover'}{'pop3_tls'}      || 1;
+my $smtp_ssl      = $config{'autodiscover'}{'smtp_ssl'}      || 1;
+my $smtp_sma      = $config{'autodiscvoer'}{'smtp_sma'}      || 1;
+my $title         = $config{'autodiscover'}{'title'}         || $config{'default'}{'domain'};
+my $short_name    = $config{'autodiscover'}{'short_name'}    || $title;
+
+my %params = (
+    'title'         => $title,
+    'short_name'    => $short_name,
+    'domain'        => $config{'default'}{'domain'},
+    'imap_ssl'      => $imap_ssl,
+    'imap_hostname' => $imap_hostname,
+    'imap_tls'      => $imap_tls,
+    'pop3_hostname' => $pop3_hostname,
+    'pop3_ssl'      => $pop3_ssl,
+    'pop3_tls'      => $pop3_tls,
+    'smtp_ssl'      => $smtp_ssl,
+    'smtp_sma'      => $smtp_sma,
+    'smtp_hostname' => $smtp_hostname,
+    'username'      => $email,
+);
+
+if ( $ENV{'REQUEST_URI'} =~ m#/mail/config-v1\.1\.xml# && $email ) {
+    #########################################################################
+    # THUNDERBIRD
+    #########################################################################
+    # TB will try to GET http://autoconfig.domain.tld/mail/config-v1.1.xml?emailaddress=user@domain.tld
+    # Thunderbird, Evolution, Kmail, et. al.
+    print $q->header( -type => 'text/xml', -charset => 'UTF-8', );
+    $tpl->process( 'autoconfig-mozilla-xml.tpl', \%params )
+      or die $tpl->error() . "\n";
+    syslog( 2, "Delivered mozilla autoconfiguration for $email" );
+}
+elsif ( $ENV{'REQUEST_URI'} =~ m#/autodiscover/autodiscover.xml# && $email ) {
+    #########################################################################
+    # OUTLOOK
+    #########################################################################
+    # Outlook will try to POST to https://autodiscover.domain.tld/autodiscover/autodiscover.xml
+    print $q->header( -type => 'text/xml', -status => '405 Microsoft Outlook Autoconfiguration', -charset => 'UTF-8', );
+    $tpl->process( 'autoconfig-outlook-xml.tpl', \%params )
+      or die $tpl->error() . "\n";
+    syslog( 2, "Delivered microsoft autoconfiguration for $email" );
+}
+else {
+    #########################################################################
+    # UNKNOWN CLIENT
+    #########################################################################
+    syslog( 2, "Unknown Request to " . $ENV{'REQUEST_URI'} );
+
+    # Unknown
+    print $q->header( -type => 'text/plain', -status => '400 Client Error', -charset => 'UTF-8', );
+    print "Unknown Client\n";
+}
+print "\n";
+
+# TODO Support Apple Mail Autoconfiguration
+
+closelog();
+exit 0;
+__END__
+
+=head1 NAME
+
+autodiscover.pl - Auto(configuration|discovery) support for VBoxAdm
+
+=head1 VERSION
+
+This documentation refers to autodiscover.pl version @VERSION@
+built on @BUILDDATE@.
+
+=head1 DESCRIPTION
+
+This script supports Autoconfiguration for Thunderbird, Outlook, Evolution and KMail.
+
+=head2 THUNDERBIRD
+
+The Thunderbird Autoconfiguration was proposed some time ago is available since, at least, version 3.x.
+
+See https://wiki.mozilla.org/Thunderbird:Autoconfiguration for more details.
+
+The process is rather simple. When a new account is created TB tries several ways to find out the correct
+crendentials w/o asking the user too much. The user just has to enter his email address and password and
+TB tries to do the rest.
+
+Among other things it will try to GET http://autoconfig.domain.tld/mail/config-v1.1.xml?emailaddress=user@domain.tld.
+
+If it receives a well formed XML response which contains the desired data this information will be used.
+
+TB expects to find at least an SMTP section and one of POP3 and IMAP.
+
+=head2 OUTLOOK
+
+Microsoft introduced Outlook Autodiscover with Outlook 2007, acording to TechNet.
+
+See http://technet.microsoft.com/en-us/library/cc511507.aspx for more details.
+
+The implementation, however, is ... well ... different.
+
+It looks like MS made the same engineers that created UPnP implement this Autodiscover.
+
+Among other things Outlook will try to contact https://autodiscover.domain.tld/autodiscover/autodiscover.xml.
+One could have used a simple GET Request here, like Mozilla did, but no. This is Microsoft. They do it ... different.
+
+They send a POST Request containing XML data, only for transmitting an email address.
+
+Naive minds would think that you'd respond with a HTTP 200 OK status code, but hey, we can do better.
+
+Microsoft requests a custom HTTP 405 Error for a successfull (!) request. This response ought to contain a
+longish XML response.
+
+=head2 APPLE MAIL
+
+While Microsoft at least publishes their Documentation Apple doesn't seem to do. There are rumors that Apple
+Mail does support Autoconfiguration, but I wasn't able to find any details on this. If you can provide
+this information let me know.
+
+=head1 DEPENDENCIES
+
+CGI, Template::Toolkit, Sys::Syslog and Config::Std.
+
+=head1 BUGS AND LIMITATIONS
+
+There are no known bugs in this module.
+Please report problems to Dominik Schulz (dominik.schulz@gauner.org)
+Patches are welcome.
+
+=head1 AUTHOR
+
+Dominik Schulz (dominik.schulz@gauner.org)
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+=cut
