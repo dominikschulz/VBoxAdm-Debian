@@ -1,3 +1,11 @@
+vboxadm (0.0.47-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add autodiscover and fcgi.
+  * Imported Upstream version 0.0.47
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Wed, 06 Apr 2011 19:55:11 +0200
+
 vboxadm (0.0.46-1) unstable; urgency=low
 
   [ Dominik Schulz ]
