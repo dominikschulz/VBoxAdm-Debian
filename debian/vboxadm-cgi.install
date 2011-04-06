@@ -1,4 +1,6 @@
 var/lib/vboxadm/cgi-bin/vboxadm.pl
+var/lib/vboxadm/cgi-bin/vboxadm.fcgi
+var/lib/vboxadm/cgi-bin/autodiscover.pl
 usr/lib/vboxadm/tpl/*
 usr/share/man/man8/VBoxAdm::Frontend.8
 usr/share/man/man8/VBoxAdm::DovecotPW.8
