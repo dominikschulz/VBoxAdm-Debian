@@ -1,0 +1,303 @@
+package VBoxAdm::Model::DomainAlias;
+
+use strict;
+use warnings;
+
+use Carp;
+
+use base qw(VBoxAdm::Model);
+use Class::Std;
+{
+
+    # Attributes
+    my %fields_of : ATTR;
+
+    sub BUILD {
+        my ( $self, $ident, $arg_ref ) = @_;
+
+        if ( !$self->user->is_user() ) {
+            return;    # Need user object
+        }
+
+        $fields_of{$ident} = [qw(id name domain_id is_active)];
+    }
+
+    sub create {
+        my ( $self, $domain, $domain_id ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        my $domain_alias = &VBoxAdm::Utils::trim( lc($domain) );
+
+        if ( $domain_alias && !&VBoxAdm::Utils::is_valid_domain_rfc822($domain_alias) ) {
+            $self->msg->push( 'error', "Invalid syntax. Domain is not RFC822 compliant!" );
+            return;
+        }
+        elsif ( $domain_id && !$self->user->is_siteadmin() && $self->user->is_domainadmin() && $domain_id != $self->user->get__domain_id() ) {
+
+            # if domainadmin, verify that its his domain
+            $self->msg->push( 'error', "You are not authorized to modify this domain!" );
+            return;
+        }
+        elsif ( $domain_alias && $domain_id ) {
+            my $query       = "SELECT name FROM domains WHERE id = ?";
+            my $sth         = &VBoxAdm::DB::prepexec( $self->dbh, $query, $domain_id );
+            my $domain_name = $sth->fetchrow_array();
+            $sth->finish();
+
+            $query = "INSERT INTO domain_aliases (name,domain_id,is_active) VALUES(?,?,1)";
+            if ( my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, $domain_alias, $domain_id ) ) {
+                $sth->finish();
+                $self->msg->push( 'information', "Added domain alias '[_1]' to domain [_2] (#[_3]).", $domain_alias, $domain_name, $domain_id );
+                return 1;
+            }
+            else {
+                $self->log( 'Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", ( $domain_alias, $domain_id ) ), $sth->errstr );
+                $self->msg->push( 'error', "Failed to add domain alias '[_1]' to domain [_2] (#[_3]). Database Error.",
+                    $domain_alias, $domain_name, $domain_id );
+                return;
+            }
+        }
+        else {
+            $self->msg->push( 'error', "Failed to add domain alias. No domain_alias or target domain given!" );
+            return;
+        }
+
+        return;
+    }
+
+    sub delete {
+        my ( $self, $domain_alias_id ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        if ( !$domain_alias_id ) {
+            $self->msg->push( 'error', 'Failed to remove domain alias. Missing domain id.' );
+            return;
+        }
+        my $query       = "SELECT name FROM domain_aliases WHERE id = ?";
+        my $sth         = &VBoxAdm::DB::prepexec( $self->dbh, $query, $domain_alias_id );
+        my $domain_name = $sth->fetchrow_array();
+        $sth->finish();
+
+        $query = "DELETE FROM domain_aliases WHERE id = ?";
+        my @args = ();
+        push( @args, $domain_alias_id );
+        if ( !$self->user->is_siteadmin() && $self->user->is_domainadmin() ) {
+            $query .= "AND domain_id = ?";
+            push( @args, $self->user->get_domain_id() );
+        }
+        if ( $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, @args ) ) {
+            $self->msg->push( 'information', "Domain-Alias [_1] (#[_2]) removed." );
+            return 1;
+        }
+        else {
+            $self->log( 'Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+            $self->msg->push( 'error', "Failed to remove Domain-Alias [_1] (#[_2]). Database error.", $domain_name, $domain_alias_id );
+            return;
+        }
+
+        return;
+    }
+
+    sub update {
+        my ( $self, $domain_alias_id, $params ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        my $domain_name = $self->get_name($domain_alias_id) if $domain_alias_id;
+
+        if ( $domain_alias_id && defined( $params->{'IsActive'} ) ) {
+            my $query = "UPDATE domain_aliases SET is_active = ? WHERE id = ?";
+            my @args  = ();
+            push( @args, $params->{'IsActive'} );
+            push( @args, $domain_alias_id );
+            if ( !$self->user->is_siteadmin() && $self->user->is_domainadmin() ) {
+                $query .= "AND domain_id = ?";
+                push( @args, $self->user->get_domain_id() );
+            }
+            my $status_str = 'disabled';
+            if ( $params->{'IsActive'} ) {
+                $status_str = 'enabled';
+            }
+            if ( my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, @args ) ) {
+                $self->msg->push( 'information', "Domain-Alias [_1] (#[_2]) $status_str.", $domain_name, $domain_alias_id );
+            }
+            else {
+                $self->log( 'Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+                $self->msg->push( 'error', "Failed to set Domain-Alias [_1] (#[_2]) [_3]. Database Error.", $domain_name, $domain_alias_id, $status_str );
+            }
+        }
+
+        if ( $params->{'Goto'} && !$self->user->is_siteadmin() && $self->user->is_domainadmin() && $params->{'Goto'} != $self->user->get_domain_id() ) {
+
+            # if domainadmin, verify that its his domain
+            $self->msg->push( 'error', "You are not authorized to modify the domain [_1]!", $domain_name );
+        }
+        elsif ( $domain_alias_id && $params->{'Goto'} ) {
+            my $query              = "SELECT name FROM domains WHERE id = ?";
+            my $sth                = &VBoxAdm::DB::prepexec( $self->dbh, $query, $params->{'Goto'} );
+            my $target_domain_name = $sth->fetchrow_array();
+            $sth->finish();
+
+            $query = "UPDATE domain_aliases SET domain_id = ? WHERE id = ?";
+
+            if ( $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, $params->{'Goto'}, $domain_alias_id ) ) {
+                $self->msg->push( 'information', "Domain-Alias [_1] (#[_2]) redirected to Domain [_3] (#[_4]).",
+                    $domain_name, $domain_alias_id, $target_domain_name, $params->{'Goto'} );
+            }
+            else {
+                $self->log( 'Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", ( $params->{'Goto'}, $domain_alias_id ) ), $sth->errstr );
+                $self->msg->push( 'error', "Failed to redirect Domain-Alias [_1] (#[_2]) to Domain [_3] (#[_4]).",
+                    $domain_name, $domain_alias_id, $target_domain_name, $params->{'Goto'} );
+            }
+        }
+
+        return;
+    }
+
+    sub read {
+        my ( $self, $id ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        return $self->_read( 'domain_aliases', $id, $fields_of{$ident} );
+    }
+
+    sub list {
+        my ( $self, $params ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        return $self->_list( 'domain_aliases', $fields_of{$ident}, $params );
+    }
+
+    sub get_name {
+        my ( $self, $id ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        my $query = "SELECT name FROM domain_aliases WHERE id = ?";
+        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, $id );
+
+        if ( !$sth ) {
+            $self->msg->push( 'error', 'Database error.' );
+            return;
+        }
+
+        my $domain_name = $sth->fetchrow_array();
+        $sth->finish();
+
+        return $domain_name;
+    }
+
+    sub get_id {
+        my ( $self, $name ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        my $query = "SELECT id FROM domain_aliases WHERE name = ?";
+        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, $name );
+
+        if ( !$sth ) {
+            $self->msg->push( 'error', 'Database error.' );
+            return;
+        }
+
+        my $domain_id = $sth->fetchrow_array();
+        $sth->finish();
+
+        return $domain_id;
+    }
+}
+1;
+__END__
+
+=head1 NAME
+
+VBoxAdm::Model::DomainAlias - Class for Domain Aliases
+
+=head1 VERSION
+
+This documentation refers to VBoxAdm::Model::DomainAlias version @VERSION@
+built on @BUILDDATE@.
+
+=head1 SYNOPSIS
+
+    use VBoxAdm::Model::DomainAlias;
+
+=head1 DESCRIPTION
+
+TODO
+
+=head1 DEPENDENCIES
+
+DBI.
+
+=head1 INCOMPATIBILITIES
+
+None known.
+
+=head1 BUGS AND LIMITATIONS
+
+There are no known bugs in this module.
+Please report problems to Dominik Schulz (dominik.schulz@gauner.org)
+Patches are welcome.
+
+=head1 AUTHOR
+
+Dominik Schulz (dominik.schulz@gauner.org)
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+=cut

@@ -1,4 +1,4 @@
-package VBoxAdm::DovecotPW;
+package VBoxAdm::SaltedHash;
 
 use strict;
 use warnings;
@@ -7,7 +7,8 @@ use MIME::Base64;
 use Digest::MD5;
 use Digest::Perl::MD5;
 use Digest::SHA;
-use Crypt::GeneratePassword;
+
+use VBoxAdm::Password '@VERSION@';
 
 our $VERSION = '@VERSION@';
 
@@ -19,7 +20,7 @@ my %hashlen = (
 );
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::plain_md5('pwclear');
+# Usage      : my $hash = VBoxAdm::SaltedHash::plain_md5('pwclear');
 # Purpose    : Generate a Plain-MD5 Hash
 # Returns    : A Hex encoded MD5 Hash of the input
 # Parameters : a string
@@ -32,7 +33,7 @@ sub plain_md5 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::cram_md5('pwclear');
+# Usage      : my $hash = VBoxAdm::SaltedHash::cram_md5('pwclear');
 # Purpose    : Generate a intermediate CRAM-MD5 string
 # Returns    : A Hex encoded, intermediate CRAM-MD5 string of the input
 # Parameters : a string
@@ -85,7 +86,7 @@ sub cram_md5 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::plain_md5('pwclear');
+# Usage      : my $hash = VBoxAdm::SaltedHash::plain_md5('pwclear');
 # Purpose    : Generate a Base64 encoded MD5 Hash
 # Returns    : A Base64 encoded MD5 hash
 # Parameters : a string
@@ -98,7 +99,7 @@ sub ldap_md5 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::smd5('pwclear','salt');
+# Usage      : my $hash = VBoxAdm::SaltedHash::smd5('pwclear','salt');
 # Purpose    : Generate a salted MD5 hash
 # Returns    : A Base64 encoded, salted MD5 hash
 # Parameters : a string
@@ -112,7 +113,7 @@ sub smd5 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::sha('pwclear');
+# Usage      : my $hash = VBoxAdm::SaltedHash::sha('pwclear');
 # Purpose    : Generate a SHA1 hash
 # Returns    : A Base64 encoded SHA1 hash
 # Parameters : a string
@@ -125,7 +126,7 @@ sub sha {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::ssha('pwclear','salt');
+# Usage      : my $hash = VBoxAdm::SaltedHash::ssha('pwclear','salt');
 # Purpose    : Generate a salted SHA1 hash
 # Returns    : A Base64 encoded, salted SHA1 hash
 # Parameters : a string
@@ -139,7 +140,7 @@ sub ssha {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::sha256('pwclear');
+# Usage      : my $hash = VBoxAdm::SaltedHash::sha256('pwclear');
 # Purpose    : Generate a SHA256 hash
 # Returns    : A Base64 encoded SHA256 hash
 # Parameters : a string
@@ -152,7 +153,7 @@ sub sha256 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::ssha256('pwclear','salt');
+# Usage      : my $hash = VBoxAdm::SaltedHash::ssha256('pwclear','salt');
 # Purpose    : Generate a salted SHA256 hash
 # Returns    : A Base64 encoded, salted SHA256 hash
 # Parameters : a string
@@ -166,7 +167,7 @@ sub ssha256 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::sha512('pwclear');
+# Usage      : my $hash = VBoxAdm::SaltedHash::sha512('pwclear');
 # Purpose    : Generate a SHA512 hash
 # Returns    : A Base64 encoded SHA512 hash
 # Parameters : a string
@@ -179,7 +180,7 @@ sub sha512 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::ssha512('pwclear','salt');
+# Usage      : my $hash = VBoxAdm::SaltedHash::ssha512('pwclear','salt');
 # Purpose    : Generate a salted SHA512 hash
 # Returns    : A Base64 encoded, salted SHA512 hash
 # Parameters : a string
@@ -193,7 +194,7 @@ sub ssha512 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::make_pass('pwclear','pwscheme','salt');
+# Usage      : my $hash = VBoxAdm::SaltedHash::make_pass('pwclear','pwscheme','salt');
 # Purpose    : Generate any supported hash
 # Returns    : the hash or cleartext of the password
 # Parameters : the password, the scheme and the salt
@@ -242,7 +243,7 @@ sub make_pass {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::make_salt();
+# Usage      : my $hash = VBoxAdm::SaltedHash::make_salt();
 # Purpose    : generate a random salt
 # Returns    : a random salt
 # Parameters : none
@@ -250,21 +251,11 @@ sub make_pass {
 # Comments   : none
 # See Also   : http://wiki.dovecot.org/Authentication/PasswordSchemes
 sub make_salt {
-    return Crypt::GeneratePassword::word( 8, 12 );
-}
-
-# This does not always whats expected.
-sub _make_salt {
-    my $len   = 8 + int( rand(8) );
-    my @bytes = ();
-    for my $i ( 1 .. $len ) {
-        push( @bytes, rand(255) );
-    }
-    return pack( 'C*', @bytes );
+    return VBoxAdm::Password::pwgen(4);
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::pad_base64('pwclear');
+# Usage      : my $hash = VBoxAdm::SaltedHash::pad_base64('pwclear');
 # Purpose    : perform base64 padding
 # Returns    : a padded base64 string
 # Parameters : a string
@@ -281,7 +272,7 @@ sub pad_base64 {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::verify_pass('pwclear','pwentry');
+# Usage      : my $hash = VBoxAdm::SaltedHash::verify_pass('pwclear','pwentry');
 # Purpose    : ????
 # Returns    : ????
 # Parameters : ????
@@ -309,7 +300,7 @@ sub verify_pass {
 }
 
 ############################################
-# Usage      : my $hash = VBoxAdm::DovecotPW::plain_md5('pwclear');
+# Usage      : my $hash = VBoxAdm::SaltedHash::plain_md5('pwclear');
 # Purpose    : ????
 # Returns    : ????
 # Parameters : ????
@@ -390,16 +381,16 @@ __END__
 
 =head1 NAME
 
-VBoxAdm::DovecotPW - Generate hashed passwords for use with Dovecot SASL.
+VBoxAdm::SaltedHash - Generate hashed passwords for use with Dovecot SASL.
 
 =head1 VERSION
 
-This documentation refers to VBoxAdm::DovecotPW version @VERSION@
+This documentation refers to VBoxAdm::SaltedHash version @VERSION@
 built on @BUILDDATE@.
 
 =head1 SYNOPSIS
 
-    use VBoxAdm::DovecotPW;
+    use VBoxAdm::SaltedHash;
 
 =head1 DESCRIPTION
 

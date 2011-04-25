@@ -9,6 +9,7 @@ mail_location=/var/vmail
 [autodiscover]
 imap_hostname=mail.domain.tld
 pop3_hostname=mail.domain.tld
+pw_encrypt = 0
 
 # config for webfrontend
 [cgi]
@@ -16,6 +17,7 @@ pwscheme=ssha256
 no_ssl=1
 base_url=/cgi-bin/vboxadm.pl
 media_prefix=
+clean_html=1
 
 # config for vacation autoresonder
 [vacation]
@@ -77,3 +79,4 @@ max_spare_servers=20
 max_requests=250
 nsloglevel=2
 logsock=unix
+recipient_delimiter=+
