@@ -1,3 +1,11 @@
+vboxadm (0.0.48-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Change install locations.
+  * Imported Upstream version 0.0.48
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Mon, 25 Apr 2011 14:46:23 +0200
+
 vboxadm (0.0.47-1) unstable; urgency=low
 
   [ Dominik Schulz ]
