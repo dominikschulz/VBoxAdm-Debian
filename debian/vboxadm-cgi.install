@@ -2,9 +2,10 @@ var/lib/vboxadm/cgi-bin/vboxadm.pl
 var/lib/vboxadm/cgi-bin/vboxadm.fcgi
 var/lib/vboxadm/cgi-bin/autodiscover.pl
 usr/lib/vboxadm/tpl/*
-usr/share/man/man8/VBoxAdm::Frontend.8
-usr/share/man/man8/VBoxAdm::DovecotPW.8
-usr/share/perl5/VBoxAdm/Frontend.pm
-usr/share/perl5/VBoxAdm/DovecotPW.pm
+usr/share/man/man1/autodiscover.1
+usr/share/man/man1/vboxadm.1
+usr/share/man/man3/VBoxAdm::Controller::Frontend.3
+usr/share/man/man8/cleanup.8
+usr/share/perl5/VBoxAdm/Controller/Frontend.pm
 var/lib/vboxadm/htdocs/*
 usr/lib/vboxadm/bin/cleanup
