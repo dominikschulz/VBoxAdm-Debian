@@ -1,0 +1,204 @@
+package VBoxAdm::Model::AWL;
+
+use strict;
+use warnings;
+
+use Carp;
+
+use Sys::Syslog;
+use VBoxAdm::DB '@VERSION@';
+use VBoxAdm::Utils '@VERSION@';
+
+use base qw(VBoxAdm::Model);
+use Class::Std;
+{
+
+    # Attributes
+    my %fields_of : ATTR;
+
+    sub BUILD {
+        my ( $self, $ident, $arg_ref ) = @_;
+
+        if ( !$self->user || !$self->user->is_user() ) {
+            return;    # Need user object
+        }
+
+        $fields_of{$ident} = [qw(id email last_seen disabled)];
+    }
+
+    sub create {
+        my ( $self, $email ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        my $sql = "INSERT IGNORE INTO awl (email,last_seen,disabled) VALUES(?,NOW(),0)";
+        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $email );
+
+        if ( !$sth ) {
+            $self->msg->push( 'error', 'Database error.' );
+            return;
+        }
+
+        $sth->finish();
+
+        return 1;
+    }
+
+    sub get_id {
+        my ( $self, $email ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        if ( !&VBoxAdm::Utils::is_valid_address_rfc822($email) ) {
+            return;
+        }
+
+        my $sql = "SELECT id FROM awl WHERE email = ?";
+        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $email );
+        my $id  = $sth->fetchrow_array();
+
+        if ( !$sth ) {
+            $self->msg->push( 'error', 'Database error.' );
+            return;
+        }
+
+        $sth->finish();
+
+        return $id;
+    }
+
+    sub update {
+        my ( $self, $entry_id, $params ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        my $disabled = $params->{'Disabled'};
+
+        if ( $entry_id && defined($disabled) ) {
+            if ( $disabled =~ m/^(?:yes|1|true|on)$/i ) {
+                $disabled = 1;
+            }
+            else {
+                $disabled = 0;
+            }
+            my $query = "UPDATE awl SET disabled = ? WHERE id = ?";
+            if ( my $sth = $self->dbh->prepare($query) ) {
+                if ( $sth->execute( $disabled, $entry_id ) ) {
+                    $sth->finish();
+                    $self->msg->push( 'information', "Updated entry [_1]. Set disabled = [_2].", $entry_id, $disabled );
+                    return 1;
+                }
+            }
+            else {
+                $self->msg->push( 'error', "Unable to update awl. Database Error." );
+                return;
+            }
+        }
+
+        return;
+    }
+
+    # There will be no AWL::delete - ever. Why?
+    # Either an entry is disabled which will prevent this address
+    # from being blacklisted forever or it will expire by itself.
+    sub delete {
+        die("There will be no AWL::delete - ever.");
+    }
+
+    sub read {
+        my ( $self, $id ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        return $self->_read( 'awl', $id, $fields_of{$ident} );
+    }
+
+    sub list {
+        my ( $self, $params ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        return $self->_list( 'awl', $fields_of{$ident}, $params );
+    }
+}
+1;
+__END__
+
+=head1 NAME
+
+VBoxAdm::Model::AWL - Class for AWL
+
+=head1 VERSION
+
+This documentation refers to VBoxAdm::Model::AWL version @VERSION@
+built on @BUILDDATE@.
+
+=head1 SYNOPSIS
+
+    use VBoxAdm::Model::AWL;
+
+=head1 DESCRIPTION
+
+TODO
+
+=head1 DEPENDENCIES
+
+DBI.
+
+=head1 INCOMPATIBILITIES
+
+None known.
+
+=head1 BUGS AND LIMITATIONS
+
+There are no known bugs in this module.
+Please report problems to Dominik Schulz (dominik.schulz@gauner.org)
+Patches are welcome.
+
+=head1 AUTHOR
+
+Dominik Schulz (dominik.schulz@gauner.org)
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+=cut

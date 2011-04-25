@@ -1,13 +1,13 @@
 #!/usr/bin/perl
 use lib qw(../lib);
 
-use VBoxAdm::Frontend '@VERSION@';
+use VBoxAdm::Controller::Frontend '@VERSION@';
 
 binmode STDIN,  ":utf8";
 binmode STDOUT, ":utf8";
 binmode STDERR, ":utf8";
 
-my $vbox = VBoxAdm::Frontend->new(
+my $vbox = VBoxAdm::Controller::Frontend->new(
     PARAMS => {
         'require_ssl'    => 1,
         'rewrite_to_ssl' => 1,

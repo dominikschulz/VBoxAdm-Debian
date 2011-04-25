@@ -1,0 +1,212 @@
+package VBoxAdm::Model::VacationBlacklist;
+
+use strict;
+use warnings;
+
+use Carp;
+
+use VBoxAdm::DB '@VERSION@';
+use VBoxAdm::Utils '@VERSION@';
+
+use base qw(VBoxAdm::Model);
+use Class::Std;
+{
+
+    # Attributes
+    my %fields_of : ATTR;
+
+    sub BUILD {
+        my ( $self, $ident, $arg_ref ) = @_;
+
+        if ( !$self->user || !$self->user->is_user() ) {
+            return;    # Need user object
+        }
+
+        $fields_of{$ident} = [qw(id local_part domain)];
+    }
+
+    sub create {
+        my ( $self, $email ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        # TODO handle duplicate key errors
+        if ( $email && &VBoxAdm::Utils::is_valid_address_rfc822($email) ) {
+            my $query = "INSERT INTO vacation_blacklist (local_part,domain) VALUES(?,?)";
+            my ( $local_part, $domain ) = split /@/, $email;
+            if ( my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, $local_part, $domain ) ) {
+                $sth->finish();
+                $self->msg->push( 'information', "Added Vacation Blacklist Entry [_1].", $email );
+                return 1;
+            }
+            else {
+                $self->log( 'Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", ( $local_part, $domain ) ), $sth->errstr );
+                $self->msg->push( 'error', "Failed to add Vacation Blacklist Entry [_1]. Database Error.", $email );
+                return;
+            }
+        }
+        else {
+            $self->msg->push( 'error', 'Invalid email address given. Please provide a valid RFC822 email address.' );
+            return;
+        }
+
+        return;
+    }
+
+    sub get_id {
+        my ( $self, $email ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        if ( !&VBoxAdm::Utils::is_valid_address_rfc822($email) ) {
+            return;
+        }
+
+        my ( $local_part, $domain ) = split /@/, $email;
+
+        my $sql = "SELECT id FROM vacation_blacklist WHERE local_part = ? AND domain = ?";
+        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $local_part, $domain );
+
+        if ( !$sth ) {
+            $self->msg->push( 'error', 'Database error.' );
+            return;
+        }
+
+        my $id = $sth->fetchrow_array();
+        $sth->finish();
+        return $id;
+    }
+
+    sub delete {
+        my ( $self, $entry_id ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        if ($entry_id) {
+            my $query = "SELECT CONCAT(local_part,'\@',domain) FROM vacation_blacklist WHERE id = ?";
+            my $sth   = $self->dbh->prepare($query);
+            $sth->execute($entry_id);
+            my $email = $sth->fetchrow_array();
+            $sth->finish();
+
+            $query = "DELETE FROM vacation_blacklist WHERE id = ?";
+            if ( &VBoxAdm::DB::prepexec( $self->dbh, $query, $entry_id ) ) {
+                $sth->finish();
+                $self->msg->push( 'information', "Deleted Vacation Blacklist Entry [_1].", $email );
+                return 1;
+            }
+            else {
+                $self->log( 'Could not execute Query: %s, Args: %s, Error: %s', $query, $entry_id, $sth->errstr );
+                $self->msg->push( 'error', "Failed to remove Vacation Blacklist Entry [_1]. Database Error.", $email );
+                return;
+            }
+        }
+        else {
+            $self->msg->push( 'error', 'Invalid id given. Please provide a valid id.' );
+            return;
+        }
+
+        return;
+    }
+
+    sub update {
+        die("No need for VacationBlacklist::update.");
+    }
+
+    sub read {
+        my ( $self, $id ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        return $self->_read( 'vacation_blacklist', $id, $fields_of{$ident} );
+    }
+
+    sub list {
+        my ( $self, $params ) = @_;
+        my $ident = ident $self;
+
+        # Authorization - No access for regular users
+        if ( !$self->user->is_admin() ) {
+            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+            return;
+        }
+
+        return $self->_list( 'vacation_blacklist', $fields_of{$ident}, $params );
+    }
+}
+1;
+__END__
+
+=head1 NAME
+
+VBoxAdm::Model::VacationBlacklist - Class for Vacation Blacklist.
+
+=head1 VERSION
+
+This documentation refers to VBoxAdm::Model::VacationBlacklist version @VERSION@
+built on @BUILDDATE@.
+
+=head1 SYNOPSIS
+
+    use VBoxAdm::Model::VacationBlacklist;
+
+=head1 DESCRIPTION
+
+TODO
+
+=head1 DEPENDENCIES
+
+DBI.
+
+=head1 INCOMPATIBILITIES
+
+None known.
+
+=head1 BUGS AND LIMITATIONS
+
+There are no known bugs in this module.
+Please report problems to Dominik Schulz (dominik.schulz@gauner.org)
+Patches are welcome.
+
+=head1 AUTHOR
+
+Dominik Schulz (dominik.schulz@gauner.org)
+
+=head1 LICENCE AND COPYRIGHT
+
+Copyright (c) 2010 Dominik Schulz (dominik.schulz@gauner.org). All rights reserved.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+=cut
