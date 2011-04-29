@@ -36,10 +36,13 @@ esac
 # make sure that the user exists. the simplest portable way to check that
 # is to chown something.
 makedir /tmp/vboxadm root:root 700
-chgrp vboxadm vboxadm 2>/dev/null ||
+chgrp vboxadm /tmp/vboxadm 2>/dev/null ||
   addgroup --system vboxadm
-chown vboxadm vboxadm 2>/dev/null ||
+chown vboxadm /tmp/vboxadm 2>/dev/null ||
   adduser --system --home /var/lib/vboxadm --no-create-home --ingroup vboxadm --disabled-password vboxadm
+makedir /var/lib/vboxadm vboxadm:vboxadm 755
+makedir /var/log/vboxadm vboxadm:vboxadm 755
+makedir /var/run/vboxadm vboxadm:vboxadm 755
 
 rm -r /tmp/vboxadm
 
