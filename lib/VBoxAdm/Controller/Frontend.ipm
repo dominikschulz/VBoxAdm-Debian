@@ -29,7 +29,6 @@ use DBI;
 use Sys::Syslog;
 use Data::Page;
 use Readonly;
-use HTML::Clean;
 
 use VBoxAdm::Utils '@VERSION@';
 use VBoxAdm::L10N '@VERSION@';
@@ -41,8 +40,11 @@ use VBoxAdm::Model::Domain '@VERSION@';
 use VBoxAdm::Model::DomainAlias '@VERSION@';
 use VBoxAdm::Model::Mailbox '@VERSION@';
 use VBoxAdm::Model::MessageQueue '@VERSION@';
+use VBoxAdm::Model::RFCNotify '@VERSION@';
+use VBoxAdm::Model::RoleAccount '@VERSION@';
 use VBoxAdm::Model::User '@VERSION@';
 use VBoxAdm::Model::VacationBlacklist '@VERSION@';
+use VBoxAdm::Model::VacationNotify '@VERSION@';
 
 our $VERSION = '@VERSION@';
 
@@ -356,12 +358,14 @@ sub setup {
 			my $Domain            = VBoxAdm::Model::Domain->new($arg_ref);
 			my $DomainAlias       = VBoxAdm::Model::DomainAlias->new($arg_ref);
 			my $Mailbox           = VBoxAdm::Model::Mailbox->new($arg_ref);
+			my $RFCNotify					= VBoxAdm::Model::RFCNotify->new($arg_ref);
 			my $VacationBlacklist = VBoxAdm::Model::VacationBlacklist->new($arg_ref);
 			$self->{'Alias'} = $Alias;
 			$self->{'AWL'} = $AWL;
 			$self->{'Domain'} = $Domain;
 			$self->{'DomainAlias'} = $DomainAlias;
 			$self->{'Mailbox'} = $Mailbox;
+			$self->{'RFCNotify'} = $RFCNotify;
 			$self->{'VacationBlacklist'} = $VacationBlacklist;
     }
 
@@ -388,6 +392,7 @@ sub teardown {
 sub cgiapp_init {
     my $self = shift;
 
+	# TODO query before syslog ... syslog before query (in setup) ... something is wrong here
     # Everything should be in UTF-8!
     $self->query->charset('UTF-8');
 
@@ -413,19 +418,12 @@ sub cgiapp_init {
 # Template::Toolkit Hooks
 #
 
-# during post processing minify html
+# post processing hooks
 sub tt_post_process {
     my $self    = shift;
     my $htmlref = shift;
     
-    if($self->{config}->{clean_html}) {
-
-	    # clean up the resulting HTML
-	    my $h = HTML::Clean->new($htmlref);
-	    $h->strip;
-	    my $newref = $h->data;
-	    $$htmlref = $$newref;
-    }
+    # nop
     return;
 }
 
@@ -747,7 +745,7 @@ sub show_send_broadcast {
         'num_sent' => $num_sent,
     );
 
-    return $self->tt_process( 'broadcast-result.tpl', \%params );
+    return $self->tt_process( 'broadcast_result.tpl', \%params );
 }
 
 #
@@ -808,7 +806,7 @@ sub show_domains {
         'page'    => $pager,
     );
 
-    return $self->tt_process( 'domains.tpl', \%params );
+    return $self->tt_process( 'domain/list.tpl', \%params );
 }
 
 sub show_domain {
@@ -877,6 +875,11 @@ sub show_domain {
         push( @domain_aliases, { id => $id, name => $name, is_active => $is_active, } );
     }
     $sth->finish();
+    
+    my @bc = ();
+    push(@bc, { 'rm' => 'welcome', caption => 'Overview',});
+    push(@bc, { 'rm' => 'domains', caption => 'Domains',});
+    push(@bc, { 'rm' => 'domain&domain_id='.$domain_id, caption => 'View Domain '.$domain_name,});
 
     my %params = (
         'title'          => $self->{lh}->maketext( 'VBoxAdm Domain: [_1]', $domain_name ),
@@ -885,9 +888,10 @@ sub show_domain {
         'aliases'        => \@aliases,
         'mailboxes'      => \@mailboxes,
         'domain_aliases' => \@domain_aliases,
+        'breadcrumb' => \@bc,
     );
 
-    return $self->tt_process( 'domain.tpl', \%params );
+    return $self->tt_process( 'domain/show.tpl', \%params );
 }
 
 sub show_create_domain {
@@ -906,7 +910,7 @@ sub show_create_domain {
         'current' => 'domains',
     );
 
-    return $self->tt_process( 'domain-create.tpl', \%params );
+    return $self->tt_process( 'domain/create.tpl', \%params );
 }
 
 sub show_add_domain {
@@ -993,7 +997,7 @@ sub show_domain_aliases {
         'page'    => $pager,
     );
 
-    return $self->tt_process( 'domain-aliases.tpl', \%params );
+    return $self->tt_process( 'domain_alias/list.tpl', \%params );
 }
 
 sub show_create_domain_alias {
@@ -1033,7 +1037,7 @@ sub show_create_domain_alias {
         'current' => 'domain_aliases',
     );
 
-    return $self->tt_process( 'domain-alias-create.tpl', \%params );
+    return $self->tt_process( 'domain_alias/create.tpl', \%params );
 }
 
 sub show_add_domain_alias {
@@ -1127,7 +1131,7 @@ sub show_edit_domain_alias {
         'domains'         => \@domains,
     );
 
-    return $self->tt_process( 'domain-alias-edit.tpl', \%params );
+    return $self->tt_process( 'domain_alias/edit.tpl', \%params );
 }
 
 sub show_update_domain_alias {
@@ -1179,11 +1183,12 @@ sub show_aliases {
         'title'   => $self->{lh}->maketext('VBoxAdm Aliases'),
         'current' => 'aliases',
         'aliases' => \@aliases,
+        'domains' => [$self->{'Domain'}->list()],
         'search'  => $search,
         'page'    => $pager,
     );
 
-    return $self->tt_process( 'aliases.tpl', \%params );
+    return $self->tt_process( 'alias/list.tpl', \%params );
 }
 
 sub show_create_alias {
@@ -1223,7 +1228,7 @@ sub show_create_alias {
         'domains' => \@domains,
     );
 
-    return $self->tt_process( 'alias-create.tpl', \%params );
+    return $self->tt_process( 'alias/create.tpl', \%params );
 }
 
 sub show_add_alias {
@@ -1286,7 +1291,7 @@ sub show_edit_alias {
     	$params{$key} = $alias_ref->{$key};
     }
 
-    return $self->tt_process( 'alias-edit.tpl', \%params );
+    return $self->tt_process( 'alias/edit.tpl', \%params );
 }
 
 sub show_update_alias {
@@ -1338,11 +1343,12 @@ sub show_mailboxes {
         'title'     => $self->{lh}->maketext('VBoxAdm Mailboxes'),
         'current'   => 'mailboxes',
         'mailboxes' => \@mailboxes,
+        'domains'   => [$self->{'Domain'}->list()],
         'search'    => $search,
         'page'      => $pager,
     );
 
-    return $self->tt_process( 'mailboxes.tpl', \%params );
+    return $self->tt_process( 'mailbox/list.tpl', \%params );
 }
 
 sub show_create_mailbox {
@@ -1384,7 +1390,7 @@ sub show_create_mailbox {
         'current' => 'mailboxes',
     );
 
-    return $self->tt_process( 'mailbox-create.tpl', \%params );
+    return $self->tt_process( 'mailbox/create.tpl', \%params );
 }
 
 sub show_add_mailbox {
@@ -1481,7 +1487,7 @@ sub show_edit_mailbox {
 		foreach my $key (keys %{$mailbox_ref}) {
 			$params{$key} = $mailbox_ref->{$key};
 		}
-    return $self->tt_process( 'mailbox-edit.tpl', \%params );
+    return $self->tt_process( 'mailbox/edit.tpl', \%params );
 }
 
 sub show_update_mailbox {
@@ -1620,7 +1626,7 @@ sub show_vacation_blacklist {
         'search'    => $search,
     );
 
-    return $self->tt_process( 'vacation_blacklist.tpl', \%params );
+    return $self->tt_process( 'vacation_blacklist/list.tpl', \%params );
 }
 
 sub show_create_vacbl_entry {
@@ -1645,7 +1651,7 @@ sub show_create_vacbl_entry {
         'current' => 'vacation',
     );
 
-    return $self->tt_process( 'vacation-blacklist-add.tpl', \%params );
+    return $self->tt_process( 'vacation_blacklist/create.tpl', \%params );
 }
 
 sub show_add_vacbl_entry {
@@ -1727,7 +1733,7 @@ sub show_vacation_replies {
         'search'   => $search,
     );
 
-    return $self->tt_process( 'vacation_notify.tpl', \%params );
+    return $self->tt_process( 'vacation_notify/list.tpl', \%params );
 }
 
 #
@@ -1784,7 +1790,7 @@ sub show_rfc_notify {
         'search'   => $search,
     );
 
-    return $self->tt_process( 'rfc-notify.tpl', \%params );
+    return $self->tt_process( 'rfc_notify/list.tpl', \%params );
 }
 
 #
@@ -1821,7 +1827,7 @@ sub show_awl {
         'search'  => $search,
     );
 
-    return $self->tt_process( 'awl.tpl', \%params );
+    return $self->tt_process( 'awl/list.tpl', \%params );
 }
 
 sub show_update_awl {
@@ -1861,57 +1867,31 @@ sub show_admins {
 
     # Get CGI Query object
     my $q = $self->query();
-
-    my $search = $q->param('search') || undef;
+    
     my $page   = $q->param('page')   || 1;
-
-    my @args  = ();
-    my $query = "FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE m.is_superadmin ";
-    $query .= "OR m.is_domainadmin ORDER BY m.is_superadmin,m.is_domainadmin,m.local_part,d.name";
-    my $sth = $dbh->prepare( "SELECT COUNT(*) " . $query )
-      or syslog( 2, 'show_admins - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
-    $sth->execute()
-      or syslog( 2, 'show_admins - Could not execute Query: %s, Args: none, Error: %s', $query, $sth->errstr );
-    my $num_rows = $sth->fetchrow_array();
-    $sth->finish();
-
+    my $search = $q->param('search');
+    my %params = (
+    	'Search' => $search,
+    	'IsAdmin' => 1,
+    );
+    
+    my @mailboxes = $self->{'Mailbox'}->list(\%params);
     my $pager = Data::Page->new();
-    $pager->total_entries($num_rows);
+    $pager->total_entries(scalar(@mailboxes));
     $pager->entries_per_page($ENTRIES_PER_PAGE);
     $pager->current_page($page);
+    $params{'Limit'} = $pager->skipped.','.$pager->entries_per_page;
+    @mailboxes = $self->{'Mailbox'}->list(\%params);
 
-    $sth = $dbh->prepare( "SELECT m.id,m.local_part,m.is_active,d.name,m.is_domainadmin,m.is_superadmin " . $query . ' LIMIT ?, ?' )
-      or syslog( 2, 'show_admins - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
-    push( @args, $pager->skipped );
-    push( @args, $pager->entries_per_page );
-    $sth->execute(@args)
-      or syslog( 2, 'show_admins - Could not execute Query: %s, Args: none, Error: %s', $query, $sth->errstr );
-
-    my @admins = ();
-    while ( my @row = $sth->fetchrow_array() ) {
-        push(
-            @admins,
-            {
-                id             => $row[0],
-                local_part     => $row[1],
-                is_active      => $row[2],
-                domain         => $row[3],
-                is_domainadmin => $row[4],
-                is_superadmin  => $row[5],
-            }
-        );
-    }
-    $sth->finish();
-
-    my %params = (
+    %params = (
         'title'   => $self->{lh}->maketext('VBoxAdm Admins'),
         'current' => 'admins',
-        'admins'  => \@admins,
+        'admins'  => \@mailboxes,
         'search'  => $search,
         'page'    => $pager,
     );
 
-    return $self->tt_process( 'admins.tpl', \%params );
+    return $self->tt_process( 'mailbox/admins.tpl', \%params );
 }
 
 1;
