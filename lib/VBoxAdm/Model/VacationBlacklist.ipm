@@ -35,7 +35,6 @@ use Class::Std;
             return;
         }
 
-        # TODO handle duplicate key errors
         if ( $email && &VBoxAdm::Utils::is_valid_address_rfc822($email) ) {
             my $query = "INSERT INTO vacation_blacklist (local_part,domain) VALUES(?,?)";
             my ( $local_part, $domain ) = split /@/, $email;
