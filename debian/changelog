@@ -1,3 +1,12 @@
+vboxadm (0.1.1-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Set proper permissions in postinst.
+  * Fix tpl install locations.
+  * Imported Upstream version 0.1.1
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Wed, 04 May 2011 21:23:27 +0200
+
 vboxadm (0.1.0-1) unstable; urgency=low
 
   [ Dominik Schulz ]
