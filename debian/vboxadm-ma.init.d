@@ -26,7 +26,7 @@ test $DEBIAN_SCRIPT_DEBUG && set -v -x
 DAEMON=/usr/sbin/vboxadm-ma
 DESC="VBoxAdm Mailarchive"
 CONFIG_DIR=/etc/vboxadm
-PIDFILE=/var/run/vboxadm-ma.pid
+PIDFILE=/var/run/vboxadm/ma.pid
 test -x $DAEMON || exit 0
 test -d $CONFIG_DIR || exit 0
 

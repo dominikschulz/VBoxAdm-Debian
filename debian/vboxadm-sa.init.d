@@ -26,7 +26,7 @@ test $DEBIAN_SCRIPT_DEBUG && set -v -x
 DAEMON=/usr/sbin/vboxadm-sa
 DESC="VBoxAdm SMTP-Proxy"
 CONFIG_DIR=/etc/vboxadm
-PIDFILE=/var/run/vboxadm-sa.pid
+PIDFILE=/var/run/vboxadm/sa.pid
 test -x $DAEMON || exit 0
 test -d $CONFIG_DIR || exit 0
 
