@@ -27,7 +27,7 @@ HTMLC = /usr/bin/java -jar build/htmlcompressor-0.9.9.jar --type html --charset 
 
 # some variables
 NAME = vboxadm
-VERSION = 0.1.1
+VERSION = 0.1.2
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -45,9 +45,11 @@ BINFILES = \
 	bin/vboxadm-ma.pl \
 	bin/vboxadm-sa.pl \
 	bin/vboxadm.pl \
+	bin/vboxadmr.pl \
 	cgi-bin/autodiscover.pl \
 	cgi-bin/vboxadm.pl \
 	cgi-bin/vboxadm.fcgi \
+	cgi-bin/vboxapi.pl \
 	cron/cleanup.pl \
 	cron/awl.pl \
 	cron/notify.pl \
@@ -59,6 +61,7 @@ BINFILES = \
 	contrib/is_utf8.pl
 
 LIBFILES = \
+	lib/VBoxAdm/Controller/API.pm \
 	lib/VBoxAdm/Controller/Frontend.pm \
 	lib/VBoxAdm/L10N/ar.pm \
 	lib/VBoxAdm/L10N/da.pm \
@@ -111,6 +114,7 @@ MANFILES = \
 	cron/cleanup.8 \
 	cron/mailarchive.8 \
 	cron/notify.8 \
+	lib/VBoxAdm/Controller/API.3 \
 	lib/VBoxAdm/Controller/Frontend.3 \
 	lib/VBoxAdm/Model/Alias.3 \
 	lib/VBoxAdm/Model/AWL.3 \
@@ -134,6 +138,7 @@ MANFILES = \
 	lib/VBoxAdm/Utils.3
 
 TESTFILES = \
+	t/VBoxAdm/Controller/API.t \
 	t/VBoxAdm/Controller/Frontend.t \
 	t/VBoxAdm/L10N/de.t \
 	t/VBoxAdm/L10N/en.t \
@@ -193,6 +198,11 @@ TPLFILES = \
 	tpl/mailbox/edit.tpl \
 	tpl/mailbox/list.tpl \
 	tpl/rfc_notify/list.tpl \
+	tpl/role_account/create_partial.tpl \
+	tpl/role_account/create.tpl \
+	tpl/role_account/edit_partial.tpl \
+	tpl/role_account/edit.tpl \
+	tpl/role_account/list.tpl \
 	tpl/vacation_blacklist/create_partial.tpl \
 	tpl/vacation_blacklist/create.tpl \
 	tpl/vacation_blacklist/list.tpl \
@@ -277,6 +287,7 @@ real-install: all test rcvboxadm
 	$(INSTALL_PROGRAM) bin/vacation.pl $(VBOXLIBDIR)/bin/vacation
 	$(INSTALL_PROGRAM) bin/vboxadm-sa.pl $(SBINDIR)/vboxadm-sa
 	$(INSTALL_PROGRAM) bin/vboxadm.pl $(BINDIR)/vboxadm
+	$(INSTALL_PROGRAM) bin/vboxadmr.pl $(BINDIR)/vboxadmr
 	$(INSTALL_DATA) bin/*.8 $(MANDIR)/man8/
 	$(INSTALL_DATA) cgi-bin/*.1 $(MANDIR)/man1/
 	$(INSTALL_DATA) cron/*.8 $(MANDIR)/man8/
