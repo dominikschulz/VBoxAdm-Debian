@@ -25,6 +25,7 @@ usr/share/perl5/VBoxAdm/SMTP/Client.pm
 usr/share/perl5/VBoxAdm/SMTP/Server.pm
 usr/share/perl5/VBoxAdm/API.pm
 usr/share/perl5/VBoxAdm/DB.pm
+usr/share/perl5/VBoxAdm/DNS.pm
 usr/share/perl5/VBoxAdm/L10N.pm
 usr/share/perl5/VBoxAdm/Migration.pm
 usr/share/perl5/VBoxAdm/Model.pm
