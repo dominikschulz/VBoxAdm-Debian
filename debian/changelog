@@ -1,3 +1,12 @@
+vboxadm (0.1.3-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Depend on libio-socket-inet6-perl
+  * Add missing VBoxAdm::DNS.
+  * Imported Upstream version 0.1.3
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sat, 28 May 2011 19:10:56 +0200
+
 vboxadm (0.1.2-1) unstable; urgency=low
 
   [ Dominik Schulz ]
