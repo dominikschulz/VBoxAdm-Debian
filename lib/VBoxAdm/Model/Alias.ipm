@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Carp;
+use Encode;
 
 use VBoxAdm::DB '@VERSION@';
 use VBoxAdm::Utils '@VERSION@';
@@ -21,6 +22,7 @@ use Class::Std;
         if ( !$self->user || !$self->user->is_user() ) {
             return;    # Need user object
         }
+
     }
 
     sub get_id {
@@ -69,6 +71,7 @@ use Class::Std;
 
         $local_part = &VBoxAdm::Utils::trim( lc($local_part) );
         $goto       = &VBoxAdm::Utils::trim( lc($goto) );
+        my $delim = $self->config()->{'smtpproxy'}->{'recipient_delimiter'};
 
         my $Domain = VBoxAdm::Model::Domain->new( { 'Model' => $self, } );
         my $domain_name = $Domain->get_name($domain_id);
@@ -85,6 +88,10 @@ use Class::Std;
         }
         elsif ( $goto && !&VBoxAdm::Utils::is_valid_addresses_rfc822($goto) ) {
             $self->msg->push( 'error', "Invalid address in destination!" );
+            return;
+        }
+        elsif ( $local_part && $delim && $local_part =~ m/$delim/ ) {
+            $self->msg->push( 'error', 'Localpart may not contain the recipent_delimiter (' . $delim . ')' );
             return;
         }
         elsif ( $local_part && $domain_id && $goto ) {
@@ -229,12 +236,12 @@ use Class::Std;
                 $query .= " AND domain_id = ?";
                 push( @args, $self->user->get_domain_id() );
             }
-            if ( my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, $target, $alias_id ) ) {
+            if ( my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, @args ) ) {
                 $self->msg->push( 'information', "Alias [_1] (#[_2]) redirected to [_3].", $alias_name, $alias_id, $target );
                 $sth->finish();
             }
             else {
-                $self->log( 'Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", ( $target, $alias_id ) ), $sth->errstr );
+                $self->log( 'Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
                 $self->msg->push( 'error', "Failed to redirect Alias [_1] (#[_2]) to [_3].", $alias_name, $alias_id, $target );
             }
         }
@@ -260,7 +267,7 @@ use Class::Std;
             $sql .= " AND a.domain_id = ?";
             push( @args, $self->user->get_domain_id() );
         }
-        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $id );
+        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, @args );
         if ( !$sth ) {
             $self->msg->push( 'error', 'Database error.' );
             return;
@@ -269,6 +276,9 @@ use Class::Std;
         @result{qw(id local_part domain goto is_active)} = $sth->fetchrow_array();
         $sth->finish();
 
+        foreach my $key ( keys %result ) {
+            $result{$key} = Encode::decode( 'UTF-8', $result{$key} ) unless Encode::is_utf8( $result{$key} );
+        }
         return \%result;
     }
 
@@ -291,6 +301,7 @@ use Class::Std;
             $term = '%' . $term . '%';
             push( @args, $term );
             push( @args, $term );
+            push( @args, $term );
         }
 
         # Authorization
@@ -304,17 +315,13 @@ use Class::Std;
             return;
         }
         my @results = ();
-        while ( my ( $id, $local_part, $domain_name, $goto, $is_active ) = $sth->fetchrow_array() ) {
-            push(
-                @results,
-                {
-                    'id'         => $id,
-                    'local_part' => $local_part,
-                    'domain'     => $domain_name,
-                    'goto'       => $goto,
-                    'is_active'  => $is_active,
-                }
-            );
+        while ( my @row = $sth->fetchrow_array() ) {
+            my %h;
+            @h{qw(id local_part domain goto is_active)} = @row;
+            foreach my $field ( keys %h ) {
+                $h{$field} = Encode::decode( 'UTF-8', $h{$field} ) unless Encode::is_utf8( $h{$field} );
+            }
+            push( @results, \%h );
         }
 
         return @results;

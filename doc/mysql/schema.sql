@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS `aliases` (
   `id` int(16) NOT NULL AUTO_INCREMENT,
   `domain_id` int(16) NOT NULL,
   `local_part` varchar(64) CHARACTER SET latin1 NOT NULL,
-  `goto` varchar(255) CHARACTER SET latin1 NOT NULL,
+  `goto` varchar(4096) CHARACTER SET latin1 NOT NULL,
   `is_active` tinyint(1) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `domain_id` (`domain_id`,`local_part`),
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS `rfc_notify` (
   `ts` datetime NOT NULL,
   PRIMARY KEY (`id`),
   KEY `email` (`email`)
-) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
+) ENGINE=MyISAM  DEFAULT CHARSET=latin1;
 
 DROP TABLE IF EXISTS `vacation_blacklist`;
 CREATE TABLE IF NOT EXISTS `vacation_blacklist` (
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS `vacation_blacklist` (
   `domain` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `domain_lp` (`domain`,`local_part`)
-) ENGINE=InnoDB  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB  DEFAULT CHARSET=latin1;
 
 DROP TABLE IF EXISTS `vacation_notify`;
 CREATE TABLE IF NOT EXISTS `vacation_notify` (
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS `vacation_notify` (
   `notified_at` datetime NOT NULL,
   PRIMARY KEY (`on_vacation`,`notified`),
   KEY `notified_at` (`notified_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 ALTER TABLE `aliases`
   ADD CONSTRAINT `aliases_ibfk_1` FOREIGN KEY (`domain_id`) REFERENCES `domains` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;

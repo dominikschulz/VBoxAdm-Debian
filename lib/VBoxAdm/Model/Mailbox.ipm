@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Carp;
+use Encode;
 use Sys::Syslog;
 
 use VBoxAdm::SaltedHash '@VERSION@';
@@ -49,6 +50,7 @@ use Class::Std;
 
         my $system_domain = $self->config->{'default'}{'domain'}   || 'localhost';
         my $pwscheme      = $self->config->{'default'}{'pwscheme'} || 'ssha256';
+        my $delim         = $self->config()->{'smtpproxy'}->{'recipient_delimiter'};
 
         my %args = (
             'local_part'     => $local_part,
@@ -62,6 +64,14 @@ use Class::Std;
             'is_superadmin'  => 0,
             'max_msg_size'   => 15 * 1024,
         );
+
+        #
+        # LocalPart
+        #
+        if ( $local_part && $delim && $local_part =~ m/$delim/ ) {
+            $self->msg->push( 'error', 'Localpart may not contain the recipent_delimiter (' . $delim . ')' );
+            return;
+        }
 
         #
         # IsActive
@@ -149,6 +159,7 @@ use Class::Std;
 
             foreach my $key ( keys %args ) {
                 $args{$key} = 0 unless defined( $args{$key} );
+                $args{$key} = Encode::decode( 'UTF-8', $args{$key} );
             }
             if ( my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, values %args ) ) {
                 $sth->finish();
@@ -198,7 +209,7 @@ use Class::Std;
         push( @args, $mailbox_id );
         if ( !$self->user->is_siteadmin() && $self->user->is_domainadmin() ) {
             $query .= "AND domain_id = ?";
-            push( @args, $self->get_users_domainid() );
+            push( @args, $self->user->get_domain_id() );
         }
         if ( $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, @args ) ) {
             $self->msg->push( 'information', "Mailbox [_1] (#[_2]) removed.", $mailbox_name, $mailbox_id );
@@ -235,6 +246,10 @@ use Class::Std;
 
         # only execute query if scalar(@params) > 0, i.e. at least on valid option
         my @args = ();
+
+        foreach my $key ( keys %{$params} ) {
+            $params->{$key} = Encode::decode( 'UTF-8', $params->{$key} );
+        }
 
         #
         # Password
@@ -448,7 +463,7 @@ use Class::Std;
             push( @args, $self->user->get_id() );
         }
 
-        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $mailbox_id );
+        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, @args );
 
         if ( !$sth ) {
             $self->msg->push( 'error', 'Database error.' );
@@ -472,6 +487,10 @@ use Class::Std;
         }
         else {
             $result{'max_msg_size_mb'} = 0;
+        }
+
+        foreach my $key ( keys %result ) {
+            $result{$key} = Encode::decode( 'UTF-8', $result{$key} ) unless Encode::is_utf8( $result{$key} );
         }
 
         return \%result;
@@ -507,11 +526,19 @@ use Class::Std;
             $sql .= " AND (is_domainadmin OR is_superadmin)";
         }
 
+        # domain admins may only see their own domain
+        if ( !$self->user->is_siteadmin() ) {
+            $sql .= " AND domain_id = ?";
+            push( @args, $self->user->get_domain_id() );
+        }
+
+        # regular users are kicked out above
+
         my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, @args );
 
         if ( !$sth ) {
             $self->msg->push( 'error', 'Database error.' );
-            $self->log( 'Database Error during query ' . $sql . ': ' . $sth->errstr );
+            $self->log( 'Database Error during query ' . $sql . ': ' . $self->dbh->errstr );
             return;
         }
 
@@ -522,6 +549,9 @@ use Class::Std;
         while ( my @row = $sth->fetchrow_array() ) {
             my %h;
             @h{@fields} = @row;
+            foreach my $field ( keys %h ) {
+                $h{$field} = Encode::decode( 'UTF-8', $h{$field} ) unless Encode::is_utf8( $h{$field} );
+            }
             delete( $h{'password'} ) unless $param->{'IncludePassword'};
             push( @entries, \%h );
         }

@@ -27,7 +27,7 @@ HTMLC = /usr/bin/java -jar build/htmlcompressor-0.9.9.jar --type html --charset 
 
 # some variables
 NAME = vboxadm
-VERSION = 0.1.3
+VERSION = 0.1.4
 BUILDDATE = $(shell date +%Y-%m-%d)
 
 # Directories
@@ -97,6 +97,7 @@ LIBFILES = \
 	lib/VBoxAdm/DB.pm \
 	lib/VBoxAdm/DNS.pm \
 	lib/VBoxAdm/L10N.pm \
+	lib/VBoxAdm/Logger.pm \
 	lib/VBoxAdm/Migration.pm \
 	lib/VBoxAdm/Model.pm \
 	lib/VBoxAdm/Password.pm \
