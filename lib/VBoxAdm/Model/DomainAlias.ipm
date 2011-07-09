@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Carp;
+use Encode;
 
 use base qw(VBoxAdm::Model);
 use Class::Std;
@@ -38,7 +39,7 @@ use Class::Std;
             $self->msg->push( 'error', "Invalid syntax. Domain is not RFC822 compliant!" );
             return;
         }
-        elsif ( $domain_id && !$self->user->is_siteadmin() && $self->user->is_domainadmin() && $domain_id != $self->user->get__domain_id() ) {
+        elsif ( $domain_id && !$self->user->is_siteadmin() && $self->user->is_domainadmin() && $domain_id != $self->user->get_domain_id() ) {
 
             # if domainadmin, verify that its his domain
             $self->msg->push( 'error', "You are not authorized to modify this domain!" );
@@ -157,7 +158,13 @@ use Class::Std;
 
             $query = "UPDATE domain_aliases SET domain_id = ? WHERE id = ?";
 
-            if ( $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, $params->{'Goto'}, $domain_alias_id ) ) {
+            # TODO verify that Goto domain exists!
+
+            if ( !$target_domain_name ) {
+                $self->msg->push( 'error', 'Can not point a domainalis to non-existing domain!' );
+                return;
+            }
+            elsif ( $sth = &VBoxAdm::DB::prepexec( $self->dbh, $query, $params->{'Goto'}, $domain_alias_id ) ) {
                 $self->msg->push( 'information', "Domain-Alias [_1] (#[_2]) redirected to Domain [_3] (#[_4]).",
                     $domain_name, $domain_alias_id, $target_domain_name, $params->{'Goto'} );
             }
@@ -194,7 +201,37 @@ use Class::Std;
             return;
         }
 
-        return $self->_list( 'domain_aliases', $fields_of{$ident}, $params );
+        my $sql  = "SELECT da.id, da.name, da.is_active, d.name FROM domain_aliases AS da LEFT JOIN domains AS d ON da.domain_id = d.id WHERE 1";
+        my @args = ();
+        if ( $params->{Search} ) {
+            $sql .= " AND (da.name LIKE ? OR d.name LIKE ?)";
+            my $term = $params->{'Search'};
+            $term =~ s/[*%]+//g;
+            $term = '%' . $term . '%';
+            push( @args, $term );
+            push( @args, $term );
+        }
+
+        # Authorization
+        if ( !$self->user->is_siteadmin() ) {
+            $sql .= " AND da.domain_id = ?";
+            push( @args, $self->user->get_domain_id() );
+        }
+        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, @args );
+        if ( !$sth ) {
+            $self->msg->push( 'error', 'Database error.' );
+            return;
+        }
+        my @results = ();
+        while ( my @row = $sth->fetchrow_array() ) {
+            my %h;
+            @h{qw(id name is_active target)} = @row;
+            foreach my $field ( keys %h ) {
+                $h{$field} = Encode::decode( 'UTF-8', $h{$field} ) unless Encode::is_utf8( $h{$field} );
+            }
+            push( @results, \%h );
+        }
+        return @results;
     }
 
     sub get_name {

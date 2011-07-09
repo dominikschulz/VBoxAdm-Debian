@@ -7,6 +7,9 @@ use warnings;
 
 use CGI::Carp qw(fatalsToBrowser);
 
+use Encode;
+# TODO add punnycode translator
+
 # Needed for database connection
 use CGI::Application::Plugin::DBH (qw/dbh_config dbh/);
 
@@ -26,12 +29,12 @@ use CGI::Application::Plugin::Authentication;
 
 use Config::Std;
 use DBI;
-use Sys::Syslog;
 use Readonly;
 
 use VBoxAdm::Utils '@VERSION@';
 use VBoxAdm::L10N '@VERSION@';
 use VBoxAdm::SaltedHash '@VERSION@';
+use VBoxAdm::Logger '@VERSION@';
 
 use VBoxAdm::Model::Alias '@VERSION@';
 use VBoxAdm::Model::AWL '@VERSION@';
@@ -60,6 +63,11 @@ Readonly my $ENTRIES_PER_PAGE => 20;
 # setup is run right after cgiapp_init
 sub setup {
     my $self = shift;
+    
+    my $Logger = VBoxAdm::Logger->new({
+	    	'Facility'	=> 'Frontend',
+	    });
+	  $self->{'logger'} = $Logger;
 
     # define the default run mode
     $self->start_mode('public_login');
@@ -237,7 +245,7 @@ sub setup {
         }
     }
     if ( !$conffile_used ) {
-        syslog( 2, "setup - Warning: No readable config file found in search path! (".join(':',@conffile_locations).")" );
+        $self->{'logger'}->log( "setup - Warning: No readable config file found in search path! (".join(':',@conffile_locations).")" );
     }
     $self->{config} = \%config;
 
@@ -256,6 +264,13 @@ sub setup {
     # Connect to DBI database, same args as DBI->connect();
     # uses connect_cached for persistent connections
     # this should have no effect for CGI and speed up FastCGI
+    # http://www.cosmocode.de/en/blog/gohr/2009-12/10-surviving-the-perl-utf-8-madness
+    # http://www.gyford.com/phil/writing/2008/04/25/utf8_mysql_perl.php
+    # http://stackoverflow.com/questions/6162484/why-does-modern-perl-avoid-utf-8-by-default
+    # mysql_enable_utf8 should prepare the connection for UTF-8. It will also SET NAMES utf8.
+    # Scripts, Database, Sourcecode, Userdata ... everything should be in UTF-8
+    # the only point were we could deal with non-UTF-8 is when we output data to
+    # non-utf-8 capable browsers (are there any?)
     $self->dbh_config(
         sub {
             DBI->connect_cached(
@@ -263,22 +278,16 @@ sub setup {
                 {
                     PrintError => 0,
                     RaiseError => 0,
+                    mysql_enable_utf8 => 1,
                 }
             );
         }
     );
     if(!$self->dbh) {
-    	syslog( 2, "setup - Failed to establish DB connection with DSN $dsn and error message: ".DBI->errstr );
+    	$self->{'logger'}->log( "setup - Failed to establish DB connection with DSN $dsn and error message: ".DBI->errstr );
     	die("Could not connect to DB.");
     }
-
-    # Prepare connection for UTF-8
-    # Scripts, Database, Sourcecode, Userdata ... everything should be in UTF-8
-    # the only point were we could deal with non-UTF-8 is when we output data to
-    # non-utf-8 capable browsers (are there any?)
-    $self->dbh->do("SET NAMES utf8")
-      or syslog( 2, "setup - Failed to set DB connection to UTF-8!" );
-
+    
     #
     # L10N
     #
@@ -302,6 +311,7 @@ sub setup {
     }
     $self->tt_config(
         TEMPLATE_OPTIONS => {
+        		ENCODING => 'utf8', 
             INCLUDE_PATH => \@include_path,
             POST_CHOMP   => 1,
             FILTERS      => {
@@ -354,15 +364,15 @@ sub setup {
 	    	'Username' => $self->authen->username,
 	    	'ForceLogin' => 1,
 	    	'MessageQueue' => $Messages,
-	    	'Logger' => \&syslog,
+	    	'Logger' => $Logger,
 	    	'Config' => $self->{'config'},
 	    });
 	    $self->{'User'} = $User;
 	    my $arg_ref = {
 			    'dbh'          => $self->dbh,
-			    'User' 				 => $User,
+			    'User' 		   => $User,
 			    'MessageQueue' => $Messages,
-			    'Logger'       => \&syslog,
+			    'Logger'       => $Logger,
 			    'Config'       => $self->{'config'},
 			};
 			$self->{'Alias'}             = VBoxAdm::Model::Alias->new($arg_ref);
@@ -370,8 +380,8 @@ sub setup {
 			$self->{'Domain'}            = VBoxAdm::Model::Domain->new($arg_ref);
 			$self->{'DomainAlias'}       = VBoxAdm::Model::DomainAlias->new($arg_ref);
 			$self->{'Mailbox'}           = VBoxAdm::Model::Mailbox->new($arg_ref);
-			$self->{'RFCNotify'}			   = VBoxAdm::Model::RFCNotify->new($arg_ref);
-			$self->{'RoleAccount'}			 = VBoxAdm::Model::RoleAccount->new($arg_ref);
+			$self->{'RFCNotify'}		 = VBoxAdm::Model::RFCNotify->new($arg_ref);
+			$self->{'RoleAccount'}		 = VBoxAdm::Model::RoleAccount->new($arg_ref);
 			$self->{'VacationBlacklist'} = VBoxAdm::Model::VacationBlacklist->new($arg_ref);
     }
 
@@ -384,9 +394,6 @@ sub teardown {
 
     # Disconnect when done
     $self->dbh->disconnect();
-
-    # Close log
-    closelog();
 
     # to make perlcritic happy
     return 1;
@@ -402,18 +409,20 @@ sub cgiapp_init {
     # Everything should be in UTF-8!
     $self->query->charset('UTF-8');
 
-    # Set up syslog
-    openlog( 'VBoxAdm/Frontend', 'ndelay,nofatal', 'mail' );
-
     # Configure RequireSSL
     my $ignore_ssl_check = 0;
     if ( $self->is_shell() || $self->is_localnet() || $self->{config}{'cgi'}{'no_ssl'} ) {
         $ignore_ssl_check = 1;
     }
 
+    #$self->config_requiressl(
+    #    'keep_in_ssl'  => 1,
+    #    'ignore_check' => $ignore_ssl_check,
+    #);
+    # TODO re-enable SSL
     $self->config_requiressl(
-        'keep_in_ssl'  => 1,
-        'ignore_check' => $ignore_ssl_check,
+        'keep_in_ssl'  => 0,
+        'ignore_check' => 1,
     );
 
     # to make perlcritic happy
@@ -436,6 +445,7 @@ sub tt_post_process {
 # pre processing set commonly used variables for the templates
 sub tt_pre_process {
     my ( $self, $file, $vars ) = @_;
+    
     $vars->{username}       = $self->authen->username;
     $vars->{system_domain}  = $self->{config}{'default'}{'domain'} || 'localhost';
     $vars->{long_forms}			= $self->{config}{'cgi'}{'long_forms'} || 0;
@@ -443,6 +453,7 @@ sub tt_pre_process {
     $vars->{messages}       = $self->get_messages();
     $vars->{is_superadmin}  = $self->user->is_siteadmin() if $self->user();
     $vars->{is_domainadmin} = $self->user->is_domainadmin() if $self->user();
+    
     return;
 }
 
@@ -466,16 +477,16 @@ sub log {
     my $dbh = $self->dbh();
 
     if ($msg) {
-        syslog( 2, $msg );
+        $self->{'logger'}->log( $msg );
         my $query = "INSERT INTO log (ts,msg) VALUES(NOW(),?)";
         my $sth   = $dbh->prepare($query)
-          or syslog( 2, 'log - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+          or $self->{'logger'}->log( 'log - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
         if ( $sth->execute($msg) ) {
             $sth->finish();
             return 1;
         }
         else {
-            syslog( 2, 'log - Could not execute Query: %s, Args: %s, Error: %s', $query, $msg, $sth->errstr );
+            $self->{'logger'}->log( 'log - Could not execute Query: %s, Args: %s, Error: %s', $query, $msg, $sth->errstr );
             $sth->finish();
             return;
         }
@@ -1014,9 +1025,9 @@ sub show_create_domain_alias {
     }
     $query .= "ORDER BY name";
     my $sth = $dbh->prepare($query)
-      or syslog( 2, 'show_create_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+      or $self->{'logger'}->log( 'show_create_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
     $sth->execute(@args)
-      or syslog( 2, 'show_create_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+      or $self->{'logger'}->log( 'show_create_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1090,9 +1101,9 @@ sub show_edit_domain_alias {
     }
     $query .= " ORDER BY name";
     my $sth = $dbh->prepare($query)
-      or syslog( 2, 'show_edit_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+      or $self->{'logger'}->log( 'show_edit_domain_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
     $sth->execute(@args)
-      or syslog( 2, 'show_edit_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+      or $self->{'logger'}->log( 'show_edit_domain_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1134,11 +1145,11 @@ sub show_update_domain_alias {
 
     my $domain_alias_id = $q->param('domain_alias_id');
     my %params = (
-	    'IsActive'       => $q->param('is_active'),
+	    'IsActive'      => ($q->param('is_active') ? 1 : 0),
 	    'Goto'          => $q->param('target'),
     );
     
-    $self->{'DomainAlias'}->update($domain_alias_id);
+    $self->{'DomainAlias'}->update($domain_alias_id, \%params);
     
     $self->redirect( $self->{base_url} . '?rm=domain_aliases' );
     return;
@@ -1197,9 +1208,9 @@ sub show_create_alias {
     }
     $query .= "ORDER BY name";
     my $sth = $dbh->prepare($query)
-      or syslog( 2, 'show_create_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+      or $self->{'logger'}->log( 'show_create_alias - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
     $sth->execute(@args)
-      or syslog( 2, 'show_create_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+      or $self->{'logger'}->log( 'show_create_alias - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1352,9 +1363,9 @@ sub show_create_mailbox {
     }
     $query .= "ORDER BY name";
     my $sth = $dbh->prepare($query)
-      or syslog( 2, 'show_create_mailbox - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+      or $self->{'logger'}->log( 'show_create_mailbox - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
     $sth->execute(@args)
-      or syslog( 2, 'show_create_mailbox - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+      or $self->{'logger'}->log( 'show_create_mailbox - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @domains = ();
     while ( my @row = $sth->fetchrow_array() ) {
@@ -1434,7 +1445,7 @@ sub show_edit_mailbox {
 
     my $mailbox_id = $q->param('mailbox_id');    
     my $mailbox_ref = $self->{'Mailbox'}->read($mailbox_id);
-		my $domain_id = $mailbox_ref->{'domain_id'};
+	my $domain_id = $mailbox_ref->{'domain_id'};
 
     # show aliases pointing to this mbox, don't forget domain aliases!
     # show cc (aliases w/ the same name as this mailbox)
@@ -1451,7 +1462,7 @@ sub show_edit_mailbox {
     my ( $cc_id, $cc_goto ) = $sth->fetchrow_array();
     $sth->finish();
 
-		my %params = (
+	my %params = (
 			'title'              => $self->{lh}->maketext('Edit Mailbox'),
       'mailbox_id'         => $mailbox_id,
       'user_is_superadmin' => $self->user->is_siteadmin(),
@@ -1460,10 +1471,18 @@ sub show_edit_mailbox {
       'cc_id'              => $cc_id,
       'mb_is_domainadmin'  => $mailbox_ref->{'is_domainadmin'},
       'mb_is_superadmin'   => $mailbox_ref->{'is_superadmin'},
-		);
-		foreach my $key (keys %{$mailbox_ref}) {
-			$params{$key} = $mailbox_ref->{$key};
-		}
+	);
+	foreach my $key (keys %{$mailbox_ref}) {
+		$params{$key} = $mailbox_ref->{$key};
+	}
+		
+	if ( $params{'vacation_start'} && $params{'vacation_start'} =~ m/^\s*(\d\d\d\d)-(\d\d)-(\d\d)\s*$/ ) {
+		$params{'vacation_start'} = "$3.$2.$1";
+	}
+	if ( $params{'vacation_end'} && $params{'vacation_end'} =~ m/^\s*(\d\d\d\d)-(\d\d)-(\d\d)\s*$/ ) {
+		$params{'vacation_end'} = "$3.$2.$1";
+	}
+		
     return $self->tt_process( 'mailbox/edit.tpl', \%params );
 }
 
@@ -1533,9 +1552,9 @@ sub show_log {
 
     # Get the actual data
     my $sth = $dbh->prepare( 'SELECT ts,msg ' . $query . ' LIMIT ?, ?' )
-      or syslog( 2, 'show_log - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
+      or $self->{'logger'}->log( 'show_log - Could not prepare Query: %s, Error: %s', $query, DBI->errstr );
     $sth->execute(@args)
-      or syslog( 2, 'show_log - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
+      or $self->{'logger'}->log( 'show_log - Could not execute Query: %s, Args: %s, Error: %s', $query, join( "-", @args ), $sth->errstr );
 
     my @log = ();
     while ( my @row = $sth->fetchrow_array() ) {

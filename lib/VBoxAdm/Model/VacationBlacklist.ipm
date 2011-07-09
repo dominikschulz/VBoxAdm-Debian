@@ -30,7 +30,7 @@ use Class::Std;
         my $ident = ident $self;
 
         # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
+        if ( !$self->user->is_siteadmin() ) {
             $self->msg->push( 'error', 'Sorry. No access for regular users.' );
             return;
         }
@@ -62,7 +62,7 @@ use Class::Std;
         my $ident = ident $self;
 
         # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
+        if ( !$self->user->is_siteadmin() ) {
             $self->msg->push( 'error', 'Sorry. No access for regular users.' );
             return;
         }
@@ -91,7 +91,7 @@ use Class::Std;
         my $ident = ident $self;
 
         # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
+        if ( !$self->user->is_siteadmin() ) {
             $self->msg->push( 'error', 'Sorry. No access for regular users.' );
             return;
         }
@@ -132,7 +132,7 @@ use Class::Std;
         my $ident = ident $self;
 
         # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
+        if ( !$self->user->is_siteadmin() ) {
             $self->msg->push( 'error', 'Sorry. No access for regular users.' );
             return;
         }
@@ -145,7 +145,7 @@ use Class::Std;
         my $ident = ident $self;
 
         # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
+        if ( !$self->user->is_siteadmin() ) {
             $self->msg->push( 'error', 'Sorry. No access for regular users.' );
             return;
         }
