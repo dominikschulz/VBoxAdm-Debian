@@ -1,6 +1,7 @@
 doc/apache/
 doc/exim/
-doc/dovecot/
+doc/dovecot1/
+doc/dovecot2/
 doc/lighttpd/
 doc/mysql/
 doc/postfix/
