@@ -1,132 +1,178 @@
 package VBoxAdm::Model::User;
 
-use strict;
-use warnings;
+use Moose;
+use namespace::autoclean;
+
 use Carp;
 
 use VBoxAdm::DB '@VERSION@';
 use VBoxAdm::Utils '@VERSION@';
 use VBoxAdm::SaltedHash '@VERSION@';
 
-# TODO use Encode::decode and create, read, update and list!
+extends 'VBoxAdm::Model';
 
-use base qw(VBoxAdm::Model);
-use Class::Std;
-{
+has 'domainadmin' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => 0,
+);
 
-    # Attributes
-    my %data_of : ATTR;
+has 'siteadmin' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => 0,
+);
 
-    sub BUILD {
-        my ( $self, $ident, $arg_ref ) = @_;
-        if ( !$self->dbh || !$self->dbh->ping() ) {
-            die("Need DBH connection!");
-        }
+has 'local_part' => (
+    'is'  => 'ro',
+    'isa' => 'Str',
+);
 
-        # SystemUser is used (only) for bootstrap where no users does exist, yet.
-        if ( $arg_ref->{'SystemUser'} ) {
-            $data_of{$ident}{'domainadmin'} = 1;
-            $data_of{$ident}{'siteadmin'}   = 1;
-            $data_of{$ident}{'local_part'}  = 'root';
-            $data_of{$ident}{'domain'}      = 'localhost';
-            $data_of{$ident}{'id'}          = 0;
-            $data_of{$ident}{'domain_id'}   = 0;
-        }
+has 'domain' => (
+    'is'  => 'ro',
+    'isa' => 'Str',
+);
 
-        # ForceLogin is used when we know that a login is ok, but we don't have the (plaintext) password
-        elsif ( !$self->check_login( $arg_ref->{'Username'}, $arg_ref->{'Password'}, $arg_ref->{'ForceLogin'} ) ) {
-            confess("Need valid username and password.");
-        }
+has 'id' => (
+    'is'  => 'ro',
+    'isa' => 'Num',
+);
+
+has 'domain_id' => (
+    'is'  => 'ro',
+    'isa' => 'Num',
+);
+
+has 'force' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => 0,
+);
+
+has 'system_user' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => 0,
+);
+
+has 'user' => (
+    'is'      => 'ro',
+    'isa'     => 'Bool',
+    'default' => 0,
+);
+
+around BUILDARGS => sub {
+    my $orig  = shift;
+    my $class = shift;
+
+    my $arg_ref = $class->$orig(@_);
+
+    # SystemUser is used (only) for bootstrap where no users does exist, yet.
+    if ( $arg_ref->{'SystemUser'} ) {
+        $arg_ref->{'domainadmin'} = 1;
+        $arg_ref->{'siteadmin'}   = 1;
+        $arg_ref->{'local_part'}  = 'root';
+        $arg_ref->{'domain'}      = 'localhost';
+        $arg_ref->{'id'}          = 0;
+        $arg_ref->{'domain_id'}   = 0;
+        $arg_ref->{'system_user'} = 1;
+        $arg_ref->{'user'}        = 1;
+    }
+    elsif ( $arg_ref->{'username'} && &VBoxAdm::Utils::is_valid_address_rfc822( $arg_ref->{'username'} ) ) {
+        my ( $local_part, $domain ) = split /@/, $arg_ref->{'username'};
+        $arg_ref->{'local_part'} = $local_part;
+        $arg_ref->{'domain'}     = $domain;
     }
 
-    sub check_login : PRIVATE {
-        my ( $self, $username, $password, $force ) = @_;
-        my $ident = ident $self;
+    return $arg_ref;
+};
 
-        # check if login works
-        if ( !&VBoxAdm::Utils::is_valid_address_rfc822($username) ) {
-            print "Invalid email address given.\n" unless $self->config->{'quiet'};
-            return;
-        }
-        my ( $local_part, $domain ) = split /@/, $username;
-        my $sql =
+sub login {
+    my $self     = shift;
+    my $password = shift;
+
+    # check if login works
+    my $sql =
 "SELECT m.id,m.password,m.is_domainadmin,m.is_siteadmin,d.id FROM mailboxes AS m LEFT JOIN domains AS d ON m.domain_id = d.id WHERE m.local_part = ? AND d.name = ?";
-        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $local_part, $domain );
+    my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $self->local_part(), $self->domain() );
 
-        if ( !$sth ) {
-            $self->msg->push( 'error', 'Database error.' );
-            return;
-        }
-
-        my ( $id, $pw, $is_da, $is_sa, $domain_id ) = $sth->fetchrow_array();
-        $sth->finish();
-        if ( !$force && !&VBoxAdm::SaltedHash::verify_pass( $password, $pw ) ) {
-            print "Password invalid!\n" unless $self->config->{'quiet'};
-            return;
-        }
-        $data_of{$ident}{'domainadmin'} = $is_da;
-        $data_of{$ident}{'siteadmin'}   = $is_sa;
-        $data_of{$ident}{'local_part'}  = $local_part;
-        $data_of{$ident}{'domain'}      = $domain;
-        $data_of{$ident}{'id'}          = $id;
-        $data_of{$ident}{'domain_id'}   = $domain_id;
+    if ( !$sth ) {
+        $self->msg->push( 'error', 'Database error.' );
+        return;
     }
 
-    sub get_name : STRINGIFY {
-        my ($self) = @_;
-        my $ident = ident $self;
-        return $data_of{$ident}{'local_part'} . '@' . $data_of{$ident}{'domain'};
+    my ( $id, $pw, $is_da, $is_sa, $domain_id ) = $sth->fetchrow_array();
+    $sth->finish();
+    if ( !$self->force && !&VBoxAdm::SaltedHash::verify_pass( $password, $pw ) ) {
+        print "Password invalid!\n" unless $self->config->{'quiet'};
+        return;
     }
+    $self->{'domainadmin'} = $is_da;
+    $self->{'siteadmin'}   = $is_sa;
+    $self->{'id'}          = $id;
+    $self->{'domain_id'}   = $domain_id;
+    $self->{'user'}        = 1;
 
-    sub get_local_part {
-        my ($self) = @_;
-        my $ident = ident $self;
-        return $data_of{$ident}{'local_part'};
-    }
-
-    sub get_domain {
-        my ($self) = @_;
-        my $ident = ident $self;
-        return $data_of{$ident}{'domain'};
-    }
-
-    sub get_domain_id {
-        my ($self) = @_;
-        my $ident = ident $self;
-        return $data_of{$ident}{'domain_id'};
-    }
-
-    sub get_id : NUMERIFY {
-        my ($self) = @_;
-        my $ident = ident $self;
-        return $data_of{$ident}{'id'};
-    }
-
-    sub is_domainadmin {
-        my ($self) = @_;
-        my $ident = ident $self;
-        return $data_of{$ident}{'domainadmin'};
-    }
-
-    sub is_siteadmin {
-        my ($self) = @_;
-        my $ident = ident $self;
-        return $data_of{$ident}{'siteadmin'};
-    }
-
-    sub is_admin {
-        my ($self) = @_;
-        my $ident = ident $self;
-        return $data_of{$ident}{'domainadmin'} + $data_of{$ident}{'siteadmin'};
-    }
-
-    sub is_user : BOOLIFY {
-        my ($self) = @_;
-
-        # a successfully created class means that the user is a valid user
-        return 1;
-    }
+    return 1;
 }
+
+sub get_name {
+    my ($self) = @_;
+
+    return $self->local_part() . '@' . $self->domain();
+}
+
+sub get_local_part {
+    my ($self) = @_;
+
+    return $self->local_part();
+}
+
+sub get_domain {
+    my ($self) = @_;
+
+    return $self->domain();
+}
+
+sub get_domain_id {
+    my ($self) = @_;
+
+    return $self->domain_id();
+}
+
+sub get_id {
+    my ($self) = @_;
+
+    return $self->id();
+}
+
+sub is_domainadmin {
+    my ($self) = @_;
+
+    return $self->domainadmin();
+}
+
+sub is_siteadmin {
+    my ($self) = @_;
+
+    return $self->siteadmin();
+}
+
+sub is_admin {
+    my ($self) = @_;
+
+    return $self->domainadmin() + $self->siteadmin();
+}
+
+sub is_user {
+    my ($self) = @_;
+
+    return $self->user();
+}
+
+no Moose;
+__PACKAGE__->meta->make_immutable;
+
 1;
 __END__
 

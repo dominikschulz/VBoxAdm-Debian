@@ -1,7 +1,7 @@
 package VBoxAdm::Model::RFCNotify;
 
-use strict;
-use warnings;
+use Moose;
+use namespace::autoclean;
 
 use Carp;
 
@@ -9,116 +9,102 @@ use Sys::Syslog;
 use VBoxAdm::DB '@VERSION@';
 use VBoxAdm::Utils '@VERSION@';
 
-use base qw(VBoxAdm::Model);
-use Class::Std;
-{
+extends 'VBoxAdm::Model';
 
-    # Attributes
-    my %fields_of : ATTR;
-
-    sub BUILD {
-        my ( $self, $ident, $arg_ref ) = @_;
-
-        if ( !$self->user || !$self->user->is_user() ) {
-            return;    # Need user object
-        }
-
-        $fields_of{$ident} = [qw(id email ts)];
-    }
-
-    sub create {
-        my ( $self, $email ) = @_;
-        my $ident = ident $self;
-
-        # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
-            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
-            return;
-        }
-
-        return;
-    }
-
-    sub get_id {
-        my ( $self, $email ) = @_;
-        my $ident = ident $self;
-
-        # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
-            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
-            return;
-        }
-
-        if ( !&VBoxAdm::Utils::is_valid_address_rfc822($email) ) {
-            return;
-        }
-
-        my $sql = "SELECT id FROM rfc_notify WHERE email = ?";
-        my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $email );
-        my $id  = $sth->fetchrow_array();
-
-        if ( !$sth ) {
-            $self->msg->push( 'error', 'Database error.' );
-            return;
-        }
-
-        $sth->finish();
-
-        return $id;
-    }
-
-    sub update {
-        my ( $self, $entry_id, $params ) = @_;
-        my $ident = ident $self;
-
-        # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
-            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
-            return;
-        }
-
-        return;
-    }
-
-    sub delete {
-        my ( $self, $entry_id, $params ) = @_;
-        my $ident = ident $self;
-
-        # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
-            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
-            return;
-        }
-
-        return;
-    }
-
-    sub read {
-        my ( $self, $id ) = @_;
-        my $ident = ident $self;
-
-        # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
-            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
-            return;
-        }
-
-        return $self->_read( 'rfc_notify', $id, $fields_of{$ident} );
-    }
-
-    sub list {
-        my ( $self, $params ) = @_;
-        my $ident = ident $self;
-
-        # Authorization - No access for regular users
-        if ( !$self->user->is_admin() ) {
-            $self->msg->push( 'error', 'Sorry. No access for regular users.' );
-            return;
-        }
-
-        return $self->_list( 'rfc_notify', $fields_of{$ident}, $params );
-    }
+sub _init_fields {
+    return [qw(id email ts)];
 }
+
+sub create {
+    my ( $self, $email ) = @_;
+
+    # Authorization - No access for regular users
+    if ( !$self->user->is_admin() ) {
+        $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+        return;
+    }
+
+    return;
+}
+
+sub get_id {
+    my ( $self, $email ) = @_;
+
+    # Authorization - No access for regular users
+    if ( !$self->user->is_admin() ) {
+        $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+        return;
+    }
+
+    if ( !&VBoxAdm::Utils::is_valid_address_rfc822($email) ) {
+        return;
+    }
+
+    my $sql = "SELECT id FROM rfc_notify WHERE email = ?";
+    my $sth = &VBoxAdm::DB::prepexec( $self->dbh, $sql, $email );
+    my $id  = $sth->fetchrow_array();
+
+    if ( !$sth ) {
+        $self->msg->push( 'error', 'Database error.' );
+        return;
+    }
+
+    $sth->finish();
+
+    return $id;
+}
+
+sub update {
+    my ( $self, $entry_id, $params ) = @_;
+
+    # Authorization - No access for regular users
+    if ( !$self->user->is_admin() ) {
+        $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+        return;
+    }
+
+    return;
+}
+
+sub delete {
+    my ( $self, $entry_id, $params ) = @_;
+
+    # Authorization - No access for regular users
+    if ( !$self->user->is_admin() ) {
+        $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+        return;
+    }
+
+    return;
+}
+
+sub read {
+    my ( $self, $id ) = @_;
+
+    # Authorization - No access for regular users
+    if ( !$self->user->is_admin() ) {
+        $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+        return;
+    }
+
+    return $self->_read( 'rfc_notify', $id, );
+}
+
+sub list {
+    my ( $self, $params ) = @_;
+
+    # Authorization - No access for regular users
+    if ( !$self->user->is_admin() ) {
+        $self->msg->push( 'error', 'Sorry. No access for regular users.' );
+        return;
+    }
+
+    return $self->_list( 'rfc_notify', $params );
+}
+
+no Moose;
+__PACKAGE__->meta->make_immutable;
+
 1;
 __END__
 
