@@ -1,3 +1,11 @@
+vboxadm (0.1.11-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add missing CLI controller.
+  * Imported Upstream version 0.1.11
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Tue, 27 Sep 2011 18:39:54 +0200
+
 vboxadm (0.1.10-1) unstable; urgency=low
 
   [ Dominik Schulz ]
