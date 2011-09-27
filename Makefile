@@ -4,7 +4,7 @@
 
 # some variables
 NAME = vboxadm
-VERSION = 0.1.10
+VERSION = 0.1.11
 BUILDDATE = $(shell date +%Y-%m-%d)
 WWWUSER ?= www-data
 WWWGROUP ?= www-data
@@ -123,6 +123,7 @@ MANFILES = \
 	cron/mailarchive.8 \
 	cron/notify.8 \
 	lib/VBoxAdm/Controller/API.3 \
+	lib/VBoxAdm/Controller/CLI.3 \
 	lib/VBoxAdm/Controller/Frontend.3 \
 	lib/VBoxAdm/Model/Alias.3 \
 	lib/VBoxAdm/Model/AWL.3 \
@@ -147,6 +148,7 @@ MANFILES = \
 
 TESTFILES = \
 	t/VBoxAdm/Controller/API.t \
+	t/VBoxAdm/Controller/CLI.t \
 	t/VBoxAdm/Controller/Frontend.t \
 	t/VBoxAdm/L10N/de.t \
 	t/VBoxAdm/L10N/en.t \
