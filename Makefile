@@ -317,6 +317,8 @@ real-install: all test rcvboxadm
 	$(INSTALL_DATA) lib/VBoxAdm/Model/VBoxAdm::*.3 $(MANDIR)/man3/
 	$(INSTALL_DATA) lib/VBoxAdm/SMTP/*.pm $(LIBDIR)/VBoxAdm/SMTP/
 	$(INSTALL_DATA) lib/VBoxAdm/SMTP/VBoxAdm::*.3 $(MANDIR)/man3/
+	$(INSTALL_DATA) lib/VBoxAdm/SMTP/Proxy/*.pm $(LIBDIR)/VBoxAdm/SMTP/Proxy/
+	$(INSTALL_DATA) lib/VBoxAdm/SMTP/Proxy/VBoxAdm::*.3 $(MANDIR)/man3/
 	$(INSTALL_DATA) lib/VBoxAdm/*.pm $(LIBDIR)/VBoxAdm/
 	$(INSTALL_DATA) lib/VBoxAdm/VBoxAdm::*.3 $(MANDIR)/man3/
 	$(INSTALL_DATA) tpl/*.tpl $(VBOXLIBDIR)/tpl/
