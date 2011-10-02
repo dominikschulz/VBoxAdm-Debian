@@ -4,7 +4,7 @@
 
 # some variables
 NAME = vboxadm
-VERSION = 0.1.14
+VERSION = 0.1.15
 BUILDDATE = $(shell date +%Y-%m-%d)
 WWWUSER ?= www-data
 WWWGROUP ?= www-data
@@ -316,6 +316,8 @@ real-install: all test rcvboxadm
 	$(INSTALL_DATA) lib/VBoxAdm/Model/*.pm $(LIBDIR)/VBoxAdm/Model/
 	$(INSTALL_DATA) lib/VBoxAdm/Model/VBoxAdm::*.3 $(MANDIR)/man3/
 	$(INSTALL_DATA) lib/VBoxAdm/SMTP/*.pm $(LIBDIR)/VBoxAdm/SMTP/
+	$(INSTALL_DATA) lib/VBoxAdm/SMTP/Proxy/*.pm $(LIBDIR)/VBoxAdm/SMTP/Proxy/
+	$(INSTALL_DATA) lib/VBoxAdm/SMTP/Proxy/VBoxAdm::*.3 $(MANDIR)/man3/
 	$(INSTALL_DATA) lib/VBoxAdm/SMTP/VBoxAdm::*.3 $(MANDIR)/man3/
 	$(INSTALL_DATA) lib/VBoxAdm/SMTP/Proxy/*.pm $(LIBDIR)/VBoxAdm/SMTP/Proxy/
 	$(INSTALL_DATA) lib/VBoxAdm/SMTP/Proxy/VBoxAdm::*.3 $(MANDIR)/man3/
