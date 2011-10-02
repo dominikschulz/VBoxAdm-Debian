@@ -1,6 +1,7 @@
 var/lib/vboxadm/cgi-bin/vboxadm.pl
 var/lib/vboxadm/cgi-bin/vboxadm.fcgi
 var/lib/vboxadm/cgi-bin/autodiscover.pl
+var/lib/vboxadm/cgi-bin/vboxapi.pl
 usr/lib/vboxadm/tpl/*.tpl
 usr/lib/vboxadm/tpl/alias/*
 usr/lib/vboxadm/tpl/autoconfig/*
@@ -14,8 +15,10 @@ usr/lib/vboxadm/tpl/vacation_blacklist/*
 usr/lib/vboxadm/tpl/vacation_notify/*
 usr/share/man/man1/autodiscover.1
 usr/share/man/man1/vboxadm.1
+usr/share/man/man3/VBoxAdm::Controller::API.3
 usr/share/man/man3/VBoxAdm::Controller::Frontend.3
 usr/share/man/man8/cleanup.8
+usr/share/perl5/VBoxAdm/Controller/API.pm
 usr/share/perl5/VBoxAdm/Controller/Frontend.pm
 var/lib/vboxadm/htdocs/*
 usr/lib/vboxadm/bin/cleanup

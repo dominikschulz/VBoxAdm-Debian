@@ -5,4 +5,4 @@ usr/share/man/man8/awl.8
 usr/share/man/man8/notify.8
 usr/share/man/man8/vacation.8
 usr/lib/vboxadm/tpl/notify/*
-
+usr/share/perl5/VBoxAdm/Controller/Vacation.pm

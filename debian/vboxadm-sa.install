@@ -1,4 +1,4 @@
 usr/sbin/vboxadm-sa
-usr/share/man/man3/VBoxAdm::SMTP::Proxy.3
+usr/share/man/man3/VBoxAdm::SMTP::Proxy::SA.3
 usr/share/man/man8/vboxadm-sa.8
-usr/share/perl5/VBoxAdm/SMTP/Proxy.pm
+usr/share/perl5/VBoxAdm/SMTP/Proxy/SA.pm
