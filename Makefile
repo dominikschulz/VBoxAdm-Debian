@@ -4,7 +4,7 @@
 
 # some variables
 NAME = vboxadm
-VERSION = 0.1.13
+VERSION = 0.1.14
 BUILDDATE = $(shell date +%Y-%m-%d)
 WWWUSER ?= www-data
 WWWGROUP ?= www-data
@@ -96,8 +96,9 @@ LIBFILES = \
 	lib/VBoxAdm/Model/User.pm \
 	lib/VBoxAdm/Model/VacationBlacklist.pm \
 	lib/VBoxAdm/Model/VacationNotify.pm \
+	lib/VBoxAdm/SMTP/Proxy/MA.pm \
+	lib/VBoxAdm/SMTP/Proxy/SA.pm \
 	lib/VBoxAdm/SMTP/Client.pm \
-	lib/VBoxAdm/SMTP/Mailarchive.pm \
 	lib/VBoxAdm/SMTP/Proxy.pm \
 	lib/VBoxAdm/SMTP/Server.pm \
 	lib/VBoxAdm/API.pm \
@@ -133,8 +134,10 @@ MANFILES = \
 	lib/VBoxAdm/Model/MessageQueue.3 \
 	lib/VBoxAdm/Model/User.3 \
 	lib/VBoxAdm/Model/VacationBlacklist.3 \
+	lib/VBoxAdm/Model/VacationNotify.3 \
+	lib/VBoxAdm/SMTP/Proxy/MA.3 \
+	lib/VBoxAdm/SMTP/Proxy/SA.3 \
 	lib/VBoxAdm/SMTP/Client.3 \
-	lib/VBoxAdm/SMTP/Mailarchive.3 \
 	lib/VBoxAdm/SMTP/Proxy.3 \
 	lib/VBoxAdm/SMTP/Server.3 \
 	lib/VBoxAdm/API.3 \
@@ -160,8 +163,10 @@ TESTFILES = \
 	t/VBoxAdm/Model/MessageQueue.t \
 	t/VBoxAdm/Model/User.t \
 	t/VBoxAdm/Model/VacationBlacklist.t \
+	t/VBoxAdm/Model/VacationNotify.t \
+	t/VBoxAdm/SMTP/Proxy/MA.t \
+	t/VBoxAdm/SMTP/Proxy/SA.t \
 	t/VBoxAdm/SMTP/Client.t \
-	t/VBoxAdm/SMTP/Mailarchive.t \
 	t/VBoxAdm/SMTP/Proxy.t \
 	t/VBoxAdm/SMTP/Server.t \
 	t/VBoxAdm/API.t \
@@ -280,7 +285,7 @@ install: clean real-install
 real-install: all test rcvboxadm
 	$(INSTALL) -d $(BINDIR) $(SBINDIR) $(DESTDIR)/etc
 	$(INSTALL) -d $(CFGDIR)/vboxadm
-	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/VBoxAdm/SMTP $(LIBDIR)/VBoxAdm/Model $(LIBDIR)/VBoxAdm/Controller
+	$(INSTALL) -d $(LIBDIR)/VBoxAdm/L10N $(LIBDIR)/VBoxAdm/SMTP/Proxy $(LIBDIR)/VBoxAdm/Model $(LIBDIR)/VBoxAdm/Controller
 	$(INSTALL) -d $(MANDIR)/man1 $(MANDIR)/man3 $(MANDIR)/man8
 	$(INSTALL) -d $(VBOXLIBDIR)/bin
 	$(INSTALL) -d $(VBOXLIBDIR)/tpl/alias $(VBOXLIBDIR)/tpl/autoconfig $(VBOXLIBDIR)/tpl/awl $(VBOXLIBDIR)/tpl/domain
@@ -345,19 +350,10 @@ real-install: all test rcvboxadm
 	$(INSTALL_CONF) doc/lighttpd/50-vboxadm.conf $(CFGDIR)/vboxadm/lighttpd.conf
 
 tidy:
-	$(PERLTIDY) lib/VBoxAdm/*.ipm
-	$(PERLTIDY) lib/VBoxAdm/Model/*.ipm
-	$(PERLTIDY) lib/VBoxAdm/L10N/*.ipm
-	$(PERLTIDY) lib/VBoxAdm/SMTP/*.ipm
-	$(PERLTIDY) t/VBoxAdm/*.it
-	$(PERLTIDY) t/VBoxAdm/L10N/*.it
-	$(PERLTIDY) t/VBoxAdm/Model/*.it
-	$(PERLTIDY) bin/*.ipl
-	$(PERLTIDY) cgi-bin/*.ipl
+	$(FIND) . -name "*.ipl" -exec $(PERLTIDY) {} \;
+	$(FIND) . -name "*.ipm" -exec $(PERLTIDY) {} \;
+	$(FIND) . -name "*.it"  -exec $(PERLTIDY) {} \;
 	$(PERLTIDY) cgi-bin/*.ifcgi
-	$(PERLTIDY) cron/*.ipl
-	$(PERLTIDY) contrib/*.ipl
-
 
 clean:
 	$(FIND) bin/ -name "*.pl" -exec $(RM) {} \;
@@ -420,8 +416,10 @@ dist-minor: git
 dist-major: test-all git
 	build/release.pl --verbose --major
 
-critic:
+critic: all
 	$(PERLCRITIC) --stern bin/
+	$(PERLCRITIC) --stern cgi-bin/
+	$(PERLCRITIC) --stern cron/
 	$(PERLCRITIC) --stern lib/
 
 test: all
