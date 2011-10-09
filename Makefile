@@ -4,7 +4,7 @@
 
 # some variables
 NAME = vboxadm
-VERSION = 0.1.16
+VERSION = 0.1.17
 BUILDDATE = $(shell date +%Y-%m-%d)
 WWWUSER ?= www-data
 WWWGROUP ?= www-data
@@ -67,6 +67,7 @@ BINFILES = \
 
 LIBFILES = \
 	lib/VBoxAdm/Controller/API.pm \
+	lib/VBoxAdm/Controller/Autodiscover.pm \
 	lib/VBoxAdm/Controller/CLI.pm \
 	lib/VBoxAdm/Controller/Frontend.pm \
 	lib/VBoxAdm/Controller/Vacation.pm \
