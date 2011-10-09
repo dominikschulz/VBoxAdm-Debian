@@ -1,3 +1,11 @@
+vboxadm (0.1.17-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add autodiscover controller.
+  * Imported Upstream version 0.1.17
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sun, 09 Oct 2011 15:58:01 +0200
+
 vboxadm (0.1.16-1) unstable; urgency=low
 
   [ Dominik Schulz ]
