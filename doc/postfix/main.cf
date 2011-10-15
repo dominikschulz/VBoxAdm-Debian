@@ -61,6 +61,11 @@ virtual_alias_maps =
 	proxy:mysql:/etc/postfix/maps/virtual_alias_domain_maps.cf,
 	proxy:mysql:/etc/postfix/maps/virtual_alias_domain_mailbox_maps.cf,
 	proxy:mysql:/etc/postfix/maps/virtual_vacation_alias_maps.cf
+	
+# If you want to restrict envelope from adresses wrt. to the sasl login
+# uncomment the next two lines as well as "reject_sender_login_mismatch" below.
+#smtpd_sender_login_maps =
+#	proxy:mysql:/etc/postfix/maps/virtual_smtpd_sender_login_maps.cf
 
 # Local Mail Delivery (LDA)
 # Use either the dovecot lda deliver, configured in the master.cf ...
@@ -80,6 +85,8 @@ smtpd_sasl_type = dovecot
 smtpd_sasl_path = private/auth
 smtpd_sasl_auth_enable = yes
 
+smtpd_reject_unlisted_recipient = no
+
 # Recipient and Relay Checks - VERY IMPORTANT
 smtpd_recipient_restrictions =
 # Allow Postmaster, Abuse and other imporant role accounts
@@ -96,6 +103,7 @@ smtpd_recipient_restrictions =
         reject_unknown_sender_domain,
         reject_unknown_recipient_domain,
 # Allow our authed. users
+#        reject_sender_login_mismatch,
         permit_sasl_authenticated,
         permit_mynetworks,
 # These rejects may have to be disabled, watch your logs
@@ -120,6 +128,7 @@ smtpd_recipient_restrictions =
 #       permit_mx_backup,
 # No other relaying
         reject_unauth_destination,
+        reject_unlisted_recipient,
 # Policyd-Weight
 #        check_policy_service inet:127.0.0.1:12525,
 # allow the rest
@@ -140,6 +149,7 @@ proxy_read_maps =
      $relocated_maps
      $transport_maps
      $mynetworks
+     $smtpd_sender_login_maps
      proxy:mysql:/etc/postfix/maps/access_recipient_roles.cf
 
 # Milter settings
