@@ -75,7 +75,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-sa
 Architecture: all
-Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.8), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libnet-server-perl, debconf, spamassassin
+Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.8), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libnet-server-perl, debconf, spamassassin, liblog-dispatch-perl
 Recommends: postfix-mysql, mysql-server 
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
