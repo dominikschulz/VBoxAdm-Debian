@@ -4,7 +4,7 @@
 
 # some variables
 NAME = vboxadm
-VERSION = 0.1.21
+VERSION = 0.1.22
 BUILDDATE = $(shell date +%Y-%m-%d)
 WWWUSER ?= www-data
 WWWGROUP ?= www-data
@@ -70,6 +70,7 @@ LIBFILES = \
 	lib/VBoxAdm/Controller/Autodiscover.pm \
 	lib/VBoxAdm/Controller/CLI.pm \
 	lib/VBoxAdm/Controller/Frontend.pm \
+	lib/VBoxAdm/Controller/Notify.pm \
 	lib/VBoxAdm/Controller/Vacation.pm \
 	lib/VBoxAdm/L10N/ar.pm \
 	lib/VBoxAdm/L10N/da.pm \
@@ -384,6 +385,7 @@ clean:
 	$(FIND) . -name "*.3" -exec $(RM) {} \;
 	$(FIND) . -name "*.8" -exec $(RM) {} \;
 	$(FIND) . -name "*.pm" -exec $(RM) {} \;
+	$(FIND) . -name "*.pm~" -exec $(RM) {} \;
 	$(RM) -f bin/tmon.out
 	$(RM) -f doc/man/*
 	$(RM) -f contrib/roundcube-plugin-vboxadm.tar.gz
