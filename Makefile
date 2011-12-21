@@ -4,7 +4,7 @@
 
 # some variables
 NAME = vboxadm
-VERSION = 0.1.22
+VERSION = 0.1.23
 BUILDDATE = $(shell date +%Y-%m-%d)
 WWWUSER ?= www-data
 WWWGROUP ?= www-data
@@ -129,6 +129,8 @@ MANFILES = \
 	lib/VBoxAdm/Controller/Autodiscover.3 \
 	lib/VBoxAdm/Controller/CLI.3 \
 	lib/VBoxAdm/Controller/Frontend.3 \
+	lib/VBoxAdm/Controller/Notify.3 \
+	lib/VBoxAdm/Controller/Vacation.3 \
 	lib/VBoxAdm/Model/Alias.3 \
 	lib/VBoxAdm/Model/AWL.3 \
 	lib/VBoxAdm/Model/Domain.3 \
@@ -157,6 +159,8 @@ TESTFILES = \
 	t/VBoxAdm/Controller/Autodiscover.t \
 	t/VBoxAdm/Controller/CLI.t \
 	t/VBoxAdm/Controller/Frontend.t \
+	t/VBoxAdm/Controller/Notify.t \
+	t/VBoxAdm/Controller/Vacation.t \
 	t/VBoxAdm/L10N/de.t \
 	t/VBoxAdm/L10N/en.t \
 	t/VBoxAdm/Model/Alias.t \
