@@ -1,3 +1,11 @@
+vboxadm (0.1.23-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add missing Notify class.
+  * Imported Upstream version 0.1.23
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Wed, 21 Dec 2011 22:56:26 +0100
+
 vboxadm (0.1.22-1) unstable; urgency=low
 
   [ Dominik Schulz ]
