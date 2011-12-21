@@ -16,6 +16,7 @@ usr/lib/vboxadm/tpl/vacation_notify/*
 usr/share/man/man1/autodiscover.1
 usr/share/man/man1/vboxadm.1
 usr/share/man/man3/VBoxAdm::Controller::API.3
+usr/share/man/man3/VBoxAdm::Controller::Autodiscover.3
 usr/share/man/man3/VBoxAdm::Controller::Frontend.3
 usr/share/man/man8/cleanup.8
 usr/share/perl5/VBoxAdm/Controller/API.pm
