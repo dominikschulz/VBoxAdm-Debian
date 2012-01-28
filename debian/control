@@ -42,8 +42,7 @@ Description: Virtual DNS Hosting management interface
 
 Package: vboxadm-common
 Architecture: all
-Depends: perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, adduser, debconf, libtext-csv-xs-perl | libtext-csv-perl, liblocale-maketext-perl, libnet-imap-perl, libreadonly-xs-perl, libnet-imap-client-perl, libtext-levenshtein-perl, libio-socket-inet6-perl, libmoose-perl, libnamespace-autoclean-perl, vwebadm-common (= ${binary:Version})
-Recommends: postfix-mysql, mysql-server 
+Depends: perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, adduser, debconf, libtext-csv-xs-perl | libtext-csv-perl, liblocale-maketext-perl, libnet-imap-perl, libreadonly-xs-perl, libnet-imap-client-perl, libtext-levenshtein-perl, libio-socket-inet6-perl, libmoose-perl, libnamespace-autoclean-perl, vwebadm-common (= ${binary:Version})
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
  VBoxAdm is a web interface to manage virtual domains and mailboxes
@@ -64,8 +63,9 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-cgi
 Architecture: all
-Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libcgi-application-perl, libcgi-application-basic-plugin-bundle-perl, libcgi-application-extra-plugin-bundle-perl, famfamfam-silk-png, libtemplate-perl, libhtml-clean-perl, libtemplate-perl, libcrypt-generatepassword-perl, libdata-password-perl, lighttpd | apache2 | httpd-cgi, debconf, libtext-csv-xs-perl | libtext-csv-perl, libdigest-md5-perl, libdigest-sha-perl, libdata-page-perl, libcgi-fast-perl, libdigest-perl-md5-perl
-Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
+Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, libcgi-application-perl, libcgi-application-basic-plugin-bundle-perl, libcgi-application-extra-plugin-bundle-perl, famfamfam-silk-png, libtemplate-perl, libhtml-clean-perl, debconf, libtext-csv-xs-perl | libtext-csv-perl, libdata-page-perl
+Recommends: libcgi-fast-perl
+Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql, lighttpd | apache2 | httpd-cgi
 Description: Virtual Mail hosting management interface
  VBoxAdm is a web interface to manage virtual domains and mailboxes
  for a mail transfer agent like Postfix or Exim. The web interface
@@ -85,7 +85,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-sa
 Architecture: all
-Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libnet-server-perl, debconf, spamassassin, liblog-dispatch-perl
+Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, libnet-server-perl, debconf, spamassassin
 Recommends: postfix-mysql, mysql-server 
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
@@ -105,7 +105,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-vacation
 Architecture: all
-Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, debconf, postfix | mail-transfer-agent
+Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, debconf, postfix | mail-transfer-agent
 Recommends: postfix-mysql, mysql-server 
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
@@ -127,7 +127,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-ma
 Architecture: all
-Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, libnet-server-perl, debconf
+Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, libnet-server-perl, debconf
 Recommends: mysql-server 
 Description: Virtual Mail hosting management interface
  VBoxAdm is a web interface to manage virtual domains and mailboxes
@@ -145,7 +145,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vdnsadm-common
 Architecture: all
-Depends: perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, adduser, debconf, liblocale-maketext-perl, libreadonly-xs-perl, libmoose-perl, libnamespace-autoclean-perl, vwebadm-common (= ${binary:Version})
+Depends: perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, debconf, liblocale-maketext-perl, libreadonly-xs-perl, libmoose-perl, libnamespace-autoclean-perl, vwebadm-common (= ${binary:Version})
 Description: Virtual DNS Hosting management interface
  VDnsAdm is a web interface to manage nameservers
  with a MySQL backend, like PowerDNS.
@@ -154,7 +154,9 @@ Description: Virtual DNS Hosting management interface
 
 Package: vdnsadm-cgi
 Architecture: all
-Depends: vdnsadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl
+Depends: vdnsadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, libcgi-application-perl, libcgi-application-basic-plugin-bundle-perl, libcgi-application-extra-plugin-bundle-perl, famfamfam-silk-png, libtemplate-perl, libhtml-clean-perl, libcrypt-generatepassword-perl, debconf, libdata-page-perl
+Recommends: libcgi-fast-perl
+Suggests: lighttpd | apache2 | httpd-cgi
 Description: Virtual DNS Hosting management interface
  VDnsAdm is a web interface to manage nameservers
  with a MySQL backend, like PowerDNS.
@@ -163,7 +165,7 @@ Description: Virtual DNS Hosting management interface
 
 Package: vwebadm-common
 Architecture: all
-Depends: perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, debconf, liblocale-maketext-perl, libreadonly-xs-perl, libmoose-perl, libnamespace-autoclean-perl
+Depends: perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl, libconfig-std-perl, debconf, liblocale-maketext-perl, libreadonly-xs-perl, libmoose-perl, libnamespace-autoclean-perl, libdigest-perl-md5-perl, libdigest-md5-perl, libdigest-sha-perl, liblog-dispatch-perl
 Description: Virtual Web Management Framework
  VWebAdm is a virtual web management framework
  used to build VBoxAdm and VDnsAdm.
