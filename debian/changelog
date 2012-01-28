@@ -1,3 +1,13 @@
+vboxadm (0.2.1-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add VDnsAdm and VWebAdm
+  * Proof-read and fine-tune install locations.
+  * Re-add htdocs.
+  * Imported Upstream version 0.2.1
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sat, 28 Jan 2012 12:08:46 +0100
+
 vboxadm (0.2.0-1) unstable; urgency=low
 
   [ Dominik Schulz ]
