@@ -1,0 +1,5 @@
+doc/vdnsadm/apache/
+doc/vdnsadm/lighttpd/
+doc/vdnsadm/mysql/
+doc/vdnsadm/powerdns/
+conf/vdnsadm.conf.dist
