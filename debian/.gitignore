@@ -10,3 +10,6 @@ vboxadm-common/
 vboxadm-sa/
 vboxadm-ma/
 vboxadm-vacation/
+vdnsadm-cgi/
+vdnsadm-common/
+vwebadm-common/

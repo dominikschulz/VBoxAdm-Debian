@@ -1,0 +1,13 @@
+var/lib/vdnsadm/cgi-bin/vdnsadm.fcgi
+var/lib/vdnsadm/cgi-bin/vdnsadm.pl
+var/lib/vdnsadm/cgi-bin/vdnsapi.pl
+usr/lib/vwebadm/tpl/vdnsadm/*.tpl
+usr/lib/vwebadm/tpl/vdnsadm/domain/*
+usr/lib/vwebadm/tpl/vdnsadm/includes/*
+usr/lib/vwebadm/tpl/vdnsadm/record/*
+usr/lib/vwebadm/tpl/vdnsadm/user/*
+usr/share/man/man1/vdnsadm.1
+usr/share/man/man3/VDnsAdm::Controller::API.3
+usr/share/man/man3/VDnsAdm::Controller::Frontend.3
+usr/share/perl5/VDnsAdm/Controller/API.pm
+usr/share/perl5/VDnsAdm/Controller/Frontend.pm

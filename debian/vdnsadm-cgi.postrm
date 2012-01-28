@@ -1,25 +1,25 @@
 #!/bin/sh -e
 
-# VBoxAdm CGI postrm
+# VDnsAdm CGI postrm
 # Dominik Schulz <dominik.schulz@gauner.org>
 
 lighttpd_remove() {
-  if [ -f /etc/lighttpd/conf-available/50-vboxadm.conf ]; then
-    rm -f /etc/lighttpd/conf-available/50-vboxadm.conf
+  if [ -f /etc/lighttpd/conf-available/50-vdnsadm.conf ]; then
+    rm -f /etc/lighttpd/conf-available/50-vdnsadm.conf
     if which lighty-enable-mod >/dev/null 2>&1; then
-      lighty-disable-mod vboxadm
+      lighty-disable-mod vdnsadm
     fi
-    if [ -h /etc/lighttpd/conf-enabled/50-vboxadm.conf ]; then
+    if [ -h /etc/lighttpd/conf-enabled/50-vdnsadm.conf ]; then
       # Use debconf output
-      rm /etc/lighttpd/conf-enabled/50-vboxadm.conf
+      rm /etc/lighttpd/conf-enabled/50-vdnsadm.conf
     fi
   fi
 }
 
 apache_remove() {
   webserver=$1
-  if [ -d /etc/$webserver/conf.d ] && [ -L /etc/$webserver/conf.d/vboxadm.conf ]; then
-    rm -f /etc/$webserver/conf.d/vboxadm.conf
+  if [ -d /etc/$webserver/conf.d ] && [ -L /etc/$webserver/conf.d/vdnsadm.conf ]; then
+    rm -f /etc/$webserver/conf.d/vdnsadm.conf
   fi
 }
 
@@ -31,7 +31,7 @@ case "$1" in
   remove)
     if [ -f /usr/share/debconf/confmodule ]; then
       db_version 2.0
-      db_get vboxadm/reconfigure-webserver
+      db_get vdnsadm/reconfigure-webserver
 
       webservers="$RET"
 
@@ -59,7 +59,7 @@ case "$1" in
   purge)
     if [ -f /usr/share/debconf/confmodule ]; then
       db_version 2.0
-      db_get vboxadm/reconfigure-webserver
+      db_get vdnsadm/reconfigure-webserver
 
       webservers="$RET"
 
@@ -81,7 +81,7 @@ case "$1" in
         fi
       done
     fi
-    rm -rf /etc/vboxadm
+    rm -rf /etc/vdnsadm
     ;;
   failed-upgrade|abort-install|abort-upgrade|disappear)
     ;;

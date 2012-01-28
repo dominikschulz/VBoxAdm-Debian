@@ -1,9 +1,11 @@
 usr/lib/vboxadm/bin/awl
 usr/lib/vboxadm/bin/notify
 usr/lib/vboxadm/bin/vacation
+usr/share/man/man3/VBoxAdm::Controller::Notify.3
+usr/share/man/man3/VBoxAdm::Controller::Vacation.3
 usr/share/man/man8/awl.8
 usr/share/man/man8/notify.8
 usr/share/man/man8/vacation.8
-usr/lib/vboxadm/tpl/notify/*
+usr/lib/vwebadm/tpl/vboxadm/notify/*
 usr/share/perl5/VBoxAdm/Controller/Notify.pm
 usr/share/perl5/VBoxAdm/Controller/Vacation.pm

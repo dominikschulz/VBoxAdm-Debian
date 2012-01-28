@@ -1,10 +1,10 @@
-doc/apache/
-doc/exim/
-doc/dovecot1/
-doc/dovecot2/
-doc/lighttpd/
-doc/mysql/
-doc/postfix/
+doc/vboxadm/apache/
+doc/vboxadm/dovecot1/
+doc/vboxadm/dovecot2/
+doc/vboxadm/exim/
+doc/vboxadm/lighttpd/
+doc/vboxadm/mysql/
+doc/vboxadm/postfix/
 contrib/migration.pl
 contrib/lexicons-export.pl
 contrib/lexicons-import.pl

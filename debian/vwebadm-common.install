@@ -1,0 +1,5 @@
+usr/share/man/man3/VWebAdm::*.3
+usr/share/perl5/VWebAdm/Model/*
+usr/share/perl5/VWebAdm/*
+usr/lib/vwebadm/tpl/vwebadm/includes/*
+usr/lib/vwebadm/tpl/vwebadm/*

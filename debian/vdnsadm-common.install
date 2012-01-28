@@ -1,0 +1,13 @@
+etc/vdnsadm/*
+usr/bin/vdnsadm
+usr/share/man/man3/VDnsAdm::Controller::CLI.3
+usr/share/man/man3/VDnsAdm::Model::Domain.3
+usr/share/man/man3/VDnsAdm::Model::Record.3
+usr/share/man/man3/VDnsAdm::Model::User.3
+usr/share/man/man8/vdnsadm.8
+usr/share/man/man8/vdnsadmr.8
+usr/share/perl5/VDnsAdm/Controller/CLI.pm
+usr/share/perl5/VDnsAdm/L10N/*
+usr/share/perl5/VDnsAdm/Model/*
+usr/share/perl5/VDnsAdm/L10N.pm
+
