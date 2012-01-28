@@ -1,4 +1,6 @@
 vboxadm/
+vdnsadm/
+vwebadm/
 *.debhelper.log
 *.debhelper
 patches/

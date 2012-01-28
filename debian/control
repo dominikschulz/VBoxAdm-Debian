@@ -154,7 +154,7 @@ Description: Virtual DNS Hosting management interface
 
 Package: vdnsadm-cgi
 Architecture: all
-Depends: vdsnadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl
+Depends: vdnsadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libdbi-perl, libdbd-mysql-perl
 Description: Virtual DNS Hosting management interface
  VDnsAdm is a web interface to manage nameservers
  with a MySQL backend, like PowerDNS.
