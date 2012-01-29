@@ -1,6 +1,8 @@
 usr/sbin/vboxadm-ma
 usr/share/man/man3/VBoxAdm::SMTP::Proxy::MA.3
+usr/share/man/man3/VBoxAdm::Controller::Mailarchive.3
 usr/share/man/man8/vboxadm-ma.8
 usr/share/man/man8/mailarchive.8
 usr/share/perl5/VBoxAdm/SMTP/Proxy/MA.pm
+usr/share/perl5/VBoxAdm/Controller/Mailarchive.pm
 usr/lib/vboxadm/bin/mailarchive
