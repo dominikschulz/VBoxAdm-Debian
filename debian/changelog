@@ -1,3 +1,11 @@
+vboxadm (0.2.7-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add refactored controllers.
+  * Imported Upstream version 0.2.7
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sun, 29 Jan 2012 20:59:12 +0100
+
 vboxadm (0.2.6-1) unstable; urgency=low
 
   [ Dominik Schulz ]
