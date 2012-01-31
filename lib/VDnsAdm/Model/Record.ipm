@@ -61,11 +61,11 @@ sub _init_valid_types {
         },
         'CNAME' => sub {
             my ( $content, $ttl, $prio ) = @_;
-            if ( $content =~ m/^\w+$/ ) {
+            if ( &VWebAdm::Utils::is_valid_domain_rfc822($content) ) {
                 return 1;
             }
 
-            return;      # TODO impl
+            return;
         },
         'DHCID' => sub {
             my ( $content, $ttl, $prio ) = @_;
@@ -699,6 +699,10 @@ sub list {
         $sql .= ' AND r.type = ?';
         push( @args, $param->{'Type'} );
     }
+    if ( $param->{'NotType'} ) {
+        $sql .= ' AND r.type <> ?';
+        push( @args, $param->{'NotType'} );
+    }
 
     # domain admins may only see their own domain
     if ( !$self->user->is_siteadmin() ) {
@@ -707,7 +711,6 @@ sub list {
     }
 
     # regular users are kicked out above
-
     my $sth = &VWebAdm::DB::prepexec( $self->dbh, $sql, @args );
 
     if ( !$sth ) {
