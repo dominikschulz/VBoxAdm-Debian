@@ -1,3 +1,10 @@
+vboxadm (0.2.11-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Imported Upstream version 0.2.11
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Thu, 02 Feb 2012 21:20:01 +0100
+
 vboxadm (0.2.10-1) unstable; urgency=low
 
   [ Dominik Schulz ]
