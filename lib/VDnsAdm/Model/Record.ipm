@@ -7,9 +7,14 @@ use Carp;
 
 use VWebAdm::DB '@VERSION@';
 use VWebAdm::Utils '@VERSION@';
-use VDnsAdm::Model::Domain '@VERSION@';
 
 extends 'VWebAdm::Model';
+
+has 'domain' => (
+    'is'       => 'ro',
+    'isa'      => 'VDnsAdm::Model::Domain',
+    'required' => 1,
+);
 
 has 'valid_types' => (
     'is'      => 'ro',
@@ -259,11 +264,11 @@ sub _init_valid_types {
         },
         'TXT' => sub {
             my ( $content, $ttl, $prio ) = @_;
-            if ( $content =~ m/^\w+$/i ) {
+            if ( $content =~ m/^.{1,4096}$/i ) {
                 return 1;
             }
 
-            return;    # TODO impl
+            return;
         },
     };
 
@@ -368,8 +373,10 @@ sub create {
         return;
     }
 
-    my $Domain      = VDnsAdm::Model::Domain::->new( { 'Model' => $self, } );
-    my $domain_name = $Domain->get_name($domain_id);
+    # TODO HIGH if the associated domain is a linked domain nothing should be editable here!
+    # execpt override (by CLI or TemplateRecord class) is set!
+
+    my $domain_name = $self->domain()->get_name($domain_id);
     my $record_name = $self->_get_record_name($params);
 
     # append domain name
@@ -387,7 +394,7 @@ sub create {
         return;
     }
 
-    # Check authorization, syntax and create mailbox
+    # Check authorization, syntax and create record
     if ( $domain_id && !$self->user->is_siteadmin() && $self->user->is_domainadmin() && $domain_id != $self->user->get_domain_id() ) {
 
         # if domainadmin, verify that its his domain
@@ -412,7 +419,7 @@ sub create {
         }
         else {
             $self->logger()->log( 'Could not execute Query: ' . $query . ', Args: ' . join( "-", ( %{$params} ) ) . ', Error: ' . $self->dbh()->errstr() );
-            $self->msg->push( 'error', "Failed to add Record [_1] for [_2]. Database Error: " . $sth->dbh()->err(), $record_name, $domain_name );
+            $self->msg->push( 'error', "Failed to add Record [_1] for [_2]. Database Error!", $record_name, $domain_name );
         }
     }
     return;
@@ -458,7 +465,7 @@ sub delete {
     }
     else {
         $self->logger()->log( 'Could not execute Query: ' . $query . ', Args: ' . join( "-", @args ) . ', Error: ' . $self->dbh()->errstr() );
-        $self->msg->push( 'error', "Failed to remove Record [_1] (#[_2]). Database Error: " . $self->dbh()->err(), $record_name, $record_id );
+        $self->msg->push( 'error', "Failed to remove Record [_1] (#[_2]). Database Error!", $record_name, $record_id );
     }
 
     return;
@@ -473,6 +480,8 @@ sub _get_record_name {
 
 sub update {
     my ( $self, $record_id, $params ) = @_;
+
+    # TODO HIGH if the associated domain is a linked domain nothing should be editable here!
 
     # Authorization - Regular Users may access this method!
 
@@ -491,15 +500,12 @@ sub update {
     }
     my ( $name, $type, $content, $ttl, $domain_id ) = $sth->fetchrow_array();
     my $record_name = $self->_get_record_name( { 'name' => $name, 'type' => $type, 'ttl' => $ttl, 'content' => $content, }, );
-
-    #$self->logger()->log( message => 'Record-Name: '.$record_name, level => 'debug', );
     $sth->finish();
 
     my $msg_loc = '';
     my $msg_en  = '';
 
-    my $Domain = VDnsAdm::Model::Domain::->new( { 'Model' => $self, } );
-    my $domain_name = $Domain->get_name($domain_id);
+    my $domain_name = $self->domain()->get_name($domain_id);
 
     # append domain name
     if ( $params->{'name'} ) {
@@ -597,18 +603,28 @@ sub read {
     @result{ @{ $self->fields() } } = $sth->fetchrow_array();
     $sth->finish();
 
-    # get domain_name
-    $sql = "SELECT name FROM domains WHERE id = ?";
-    $sth = &VWebAdm::DB::prepexec( $self->dbh, $sql, $result{'domain_id'} );
-    if ($sth) {
-        $result{'domain'} = $sth->fetchrow_array();
-    }
+    # additional attributes are poplized in a separate method to aid w/ subclassing
+    $self->_read_addn( \%result );
 
     foreach my $key ( keys %result ) {
         $result{$key} = Encode::decode( 'UTF-8', $result{$key} ) unless Encode::is_utf8( $result{$key} );
     }
 
     return \%result;
+}
+
+sub _read_addn {
+    my $self       = shift;
+    my $result_ref = shift;
+
+    # get domain_name
+    my $sql = "SELECT name FROM domains WHERE id = ?";
+    my $sth = &VWebAdm::DB::prepexec( $self->dbh, $sql, $result_ref->{'domain_id'} );
+    if ($sth) {
+        $result_ref->{'domain'} = $sth->fetchrow_array();
+    }
+
+    return 1;
 }
 
 sub bump_serial {
@@ -689,8 +705,9 @@ sub list {
         return;
     }
 
+    # TODO high doesn't work w/ Subclass. Refactor to own method and override this method in subclasses
     my @fields = @{ $self->fields() };
-    my $sql    = "SELECT r." . join( ",r.", @fields ) . ",d.name FROM " . $self->table_name() . " AS r LEFT JOIN domains AS d ON r.domain_id = d.id WHERE 1";
+    my $sql    = "SELECT r." . join( ",r.", @fields ) . " FROM " . $self->table_name() . " AS r WHERE 1";
     my @args   = ();
     if ( $param->{'Search'} ) {
         $sql .= " AND name LIKE ? OR content LIKE ?";
@@ -730,19 +747,41 @@ sub list {
 
     my @entries = ();
 
-    # domain name was not in the field list 'coz it is prefixed with d., not r.
-    push( @fields, 'domain' );
     while ( my @row = $sth->fetchrow_array() ) {
         my %h;
         @h{@fields} = @row;
-        foreach my $field ( keys %h ) {
-            $h{$field} = Encode::decode( 'UTF-8', $h{$field} ) unless Encode::is_utf8( $h{$field} );
-        }
         push( @entries, \%h );
     }
     $sth->finish();
 
+    # additional attributes are poplized in a separate method to aid w/ subclassing
+    $self->_list_addn( \@entries );
+
+    # ensure proper encoding
+    foreach my $row (@entries) {
+        foreach my $field ( keys %{$row} ) {
+            $row->{$field} = Encode::decode( 'UTF-8', $row->{$field} ) unless Encode::is_utf8( $row->{$field} );
+        }
+    }
+
     return @entries;
+}
+
+sub _list_addn {
+    my $self      = shift;
+    my $entry_ref = shift;
+
+    my $sql = "SELECT name FROM domains WHERE id = ?";
+    my $sth = $self->dbh()->prepare($sql);
+
+    foreach my $entry ( @{$entry_ref} ) {
+        $sth->execute( $entry->{'domain_id'} );
+        my $domain_name = $sth->fetchrow_array();
+        $entry->{'domain'} = $domain_name;
+    }
+    $sth->finish();
+
+    return 1;
 }
 
 sub get_id {

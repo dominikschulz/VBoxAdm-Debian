@@ -1,15 +1,15 @@
 [% INCLUDE vwebadm/includes/header.tpl %]
     <div id="main" role="main">
+    	<h2>Viewing Group: [% group %]</h2>
+		<br />
 		[% FOREACH line IN domains %]
 		[% IF loop.first %]
+		<h2>Domains</h2>
 		<table class="datatable">
 			<thead>
 			<tr>
 				<th>[% "Domain" | l10n %]</th>
 				<th>[% "# Records" | l10n %]</th>
-				<th>[% "Primary NS" | l10n %]</th>
-				<th>[% "Group" | l10n %]</th>
-				<th>[% "Active" | l10n %]</th>
 				<th></th>
 				<th></th>
 			</tr>
@@ -18,29 +18,23 @@
 		[% END %]
 			<tr class="[% loop.parity %] [% IF line.is_active %]enabled[% ELSE %]disabled[% END %]">
 				<td>
-					<a href="[% base_url %]?rm=domain&domain_id=[% line.id %]">[% line.name | highlight(search) %]</a>
+					[% line.name %]
 				</td>
 				<td>
 					[% line.num_records %]
 				</td>
 				<td>
-					[% line.soa_mname %]
-				</td>
-				<td>
-					[% line.group %]
-				</td>
-				<td>
-					[% IF line.is_active %]
+					[% IF line.is_active == 1 %]
 					<a href="[% base_url %]?rm=update_domain&domain_id=[% line.id %]&is_active=0">[% "Yes" | l10n %]</a>
 					[% ELSE %]
 					<a href="[% base_url %]?rm=update_domain&domain_id=[% line.id %]&is_active=1">[% "No" | l10n %]</a>
 					[% END %]
 				</td>
 				<td>
-					<a href="[% base_url %]?rm=edit_domain&domain_id=[% line.id %]">[% "edit" | l10n %]</a>
+					<a href="[% base_url %]?rm=edit_domain&record_id=[% line.id %]">[% "edit" | l10n %]</a>
 				</td>
 				<td>
-					<a onClick="if(confirm('[% "Do you really want to delete the Domain [_1]?" | l10n(line.name) %]')) return true; else return false;" href="[% base_url %]?rm=remove_domain&domain_id=[% line.id %]">[% "del" | l10n %]</a>
+					<a onClick="if(confirm('[% "Do you really want to delete the Domain [_1]?" | l10n(line.id) %]')) return true; else return false;" href="[% base_url %]?rm=remove_domain&record_id=[% line.id %]">[% "del" | l10n %]</a>
 				</td>
 			</tr>
 		[% IF loop.last %]
@@ -51,13 +45,9 @@
 		[% END %]
 		[% END %]
 		<br />
-		[% IF !linked_template %]
 		<a href="[% base_url %]?rm=create_domain#?w=500" rel="modal_new" class="modallight"><img src="[% media_prefix %]/icons/fffsilk/add.png" border="0" /> [% "Add Domain" | l10n %]</a>
-		[% END %]
     </div>
-    [% IF !linked_template %]
     <div id="modal_new" class="modal_block">
     	[% INCLUDE vdnsadm/domain/create_partial.tpl %]
     </div>
-    [% END %]
 [% INCLUDE vwebadm/includes/footer.tpl %]

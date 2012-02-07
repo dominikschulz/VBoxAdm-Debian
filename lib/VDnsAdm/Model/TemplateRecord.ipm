@@ -10,6 +10,24 @@ use VWebAdm::Utils '@VERSION@';
 
 extends 'VDnsAdm::Model::Record';
 
+has 'domain' => (
+    'is'       => 'ro',
+    'isa'      => 'VDnsAdm::Model::Domain',
+    'required' => 1,
+);
+
+has 'record' => (
+    'is'       => 'ro',
+    'isa'      => 'VDnsAdm::Model::Record',
+    'required' => 1,
+);
+
+has 'template' => (
+    'is'       => 'ro',
+    'isa'      => 'VDnsAdm::Model::Template',
+    'required' => 1,
+);
+
 sub _init_table_name {
     my $self = shift;
 
@@ -19,6 +37,100 @@ sub _init_table_name {
 sub _init_fields {
     return [qw(id tpl_id name type content ttl prio)];
 }
+
+sub sync_records {
+    my $self   = shift;
+    my $tpl_id = shift;    # a template, the sync source
+    my $dom_id = shift;    # a linked domain, the sync destionation
+
+    # SELECT name AS domain_name FROM domains WHERE id = $dom_id
+    my $domain_name = $self->domain()->get_name($dom_id);
+
+    # DELETE FROM records WHERE domain_id = $dom_id
+    my @recs = $self->record()->list( { 'domain_id' => $dom_id, } );
+    foreach my $rec (@recs) {
+        $self->record()->delete( $rec->{'id'} );
+    }
+
+    # SELECT * FROM template_records WHERE template_id = $tpl_id
+    my @tpl_recs = $self->list( { 'template_id' => $tpl_id, } );
+    ## foreach tpl_rec
+    foreach my $tpl_rec (@tpl_recs) {
+        ### name =~ s/{{domain}}/$domain_name/g;
+        my $name = $tpl_rec->{'name'};
+        $name =~ s/{{domain}}/$domain_name/g;
+        ### content =~ s/{{domain}}/$domain_name/g;
+        my $content = $tpl_rec->{'content'};
+        $content =~ s/{{domain}}/$domain_name/g;
+        ### INSERT INTO records (domain_id,name,ttl,content,prio) VALUES($dom_id,$name,$ttl,$content,$prio);
+        $self->record()->create(
+            $dom_id,
+            {
+                'name'    => $name,
+                'content' => $content,
+                'ttl'     => $tpl_rec->{'ttl'},
+                'prio'    => $tpl_rec->{'prio'},
+            }
+        );
+    }
+    $self->bump_serial($dom_id);
+
+    return 1;
+}
+
+sub _read_addn {
+    my $self       = shift;
+    my $result_ref = shift;
+
+    # get template name
+    my $sql = "SELECT name FROM templates WHERE id = ?";
+    my $sth = &VWebAdm::DB::prepexec( $self->dbh, $sql, $result_ref->{'tpl_id'} );
+    if ($sth) {
+        $result_ref->{'template'} = $sth->fetchrow_array();
+    }
+
+    return 1;
+}
+
+sub _list_addn {
+    my $self      = shift;
+    my $entry_ref = shift;
+
+    my $sql = "SELECT name FROM templates WHERE id = ?";
+    my $sth = $self->dbh()->prepare($sql);
+
+    foreach my $entry ( @{$entry_ref} ) {
+        $sth->execute( $entry->{'tpl_id'} );
+        my $domain_name = $sth->fetchrow_array();
+        $entry->{'template'} = $domain_name;
+    }
+    $sth->finish();
+
+    return 1;
+}
+
+# after modifying a template record all linked domains should be updated immedeately to reflect any changes
+after 'update' => sub {
+    my $self      = shift;
+    my $record_id = shift;
+    my $params    = shift;
+
+    my $rec_ref     = $self->read($record_id);
+    my $template_id = $rec_ref->{'tpl_id'};
+    my @domains     = $self->domain()->list( { 'linked_template' => $template_id, } );
+
+    foreach my $domain (@domains) {
+        my $domain_id = $domain->{'id'};
+        if ( $self->sync_records( $template_id, $domain_id ) ) {
+            $self->logger()->log( message => "Synced records from template #" . $template_id . " to domain #" . $domain_id, level => 'debug', );
+        }
+        else {
+            $self->logger()->log( message => "Failed to sync records from template #" . $template_id . " to domain #" . $domain_id, level => 'debug', );
+        }
+    }
+
+    return 1;    # return value is ignored by moose, but be nice anyway ...
+};
 
 no Moose;
 __PACKAGE__->meta->make_immutable;

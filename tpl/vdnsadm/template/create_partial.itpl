@@ -1,21 +1,13 @@
 <div class="forms">
-	<form name="create_domain" method="POST">
-		<input type="hidden" name="rm" value="add_domain" />
-		<h1>[% "Add a new domain" | l10n %]</h1>
+	<form name="create_template" method="POST">
+		<input type="hidden" name="rm" value="add_template" />
+		<h1>[% "Add a new template" | l10n %]</h1>
 		
-		<label for="domain">
-			[% "Domain:" | l10n %]
-			<span class="small">Domain name</span>
+		<label for="name">
+			[% "Name:" | l10n %]
+			<span class="small">Template name</span>
 		</label>
-		<input type="text" name="domain" />
-		
-		<label for="create_domainadmin">
-			[% "Create Domainadmin:" | l10n %]
-			<span class="small">Tick here to create a domainadmin for this domain.</span>
-		</label>
-		<input type="checkbox" name="create_domainadmin" />
-		
-		<div class="spacer"></div>
+		<input type="text" name="name" />
 		
 		<label for="soa_mname">
 			[% "Primary NS:" | l10n %]
@@ -138,52 +130,9 @@
 		
 		<div class="spacer"></div>
 		
-		[% IF feature_groups %]
-		
-		<label for="group_id">
-			[% "Group:" | l10n %]
-			<span class="small">This domains group.</span>
-		</label>
-		<select name="group_id">
-			[% FOREACH line IN groups %]
-			<option value="[% line.id %]">[% line.name %]</option>
-			[% END %]
-		</select>
-		
-		<div class="spacer"></div>
-		
-		[% END %]
-		
-		[% IF feature_templates %]
-		
-		<label for="template">
-			[% "Template:" | l10n %]
-			<span class="small">The template used to populate this domain.</span>
-		</label>
-		<select name="template">
-			[% FOREACH line IN templates %]
-			<option value="[% line.id %]">[% line.name %]</option>
-			[% END %]
-		</select>
-		
-		<div class="spacer"></div>
-		
-		[% IF feature_linked_templates %]
-		
-		<label for="linked_template">
-			[% "Linked Template:" | l10n %]
-			<span class="small">Link this domain to the template?</span>
-		</label>
-		<input type="checkbox" name="linked_template" />
-		
-		<div class="spacer"></div>
-		
-		[% END %]
-		[% END %]
-		
 		<button class="button" type="submit" name="submit">
 			<img src="[% media_prefix %]/icons/fffsilk/add.png" border="0" />
-			[% "Add Domain" | l10n %]
+			[% "Add Template" | l10n %]
 		</button>
 	</form>
 </div>

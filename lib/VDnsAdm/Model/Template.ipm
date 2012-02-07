@@ -10,6 +10,12 @@ use VWebAdm::Utils '@VERSION@';
 
 extends 'VDnsAdm::Model::Domain';
 
+has 'domain' => (
+    'is'       => 'ro',
+    'isa'      => 'VDnsAdm::Model::Domain',
+    'required' => 1,
+);
+
 sub _init_table_name {
     my $self = shift;
 
@@ -18,6 +24,55 @@ sub _init_table_name {
 
 sub _init_fields {
     return [qw(id name)];
+}
+
+sub _is_linked_domain {
+
+    # a template is never a linked domain
+    return;
+}
+
+sub _validate_params {
+    my $self   = shift;
+    my $params = shift;
+
+    #
+    # Name
+    #
+    if ( defined( $params->{'name'} ) ) {
+        if ( $params->{'name'} !~ m/^[\w.]{1,255}$/i ) {
+            $self->msg->push( 'error', 'Domain name out of range!' );
+            return;
+        }
+    }
+
+    return 1;
+}
+
+sub sync_linked_domains {
+    my $self   = shift;
+    my $tpl_id = shift;    # the template whose domains should be synced
+
+    # sync each linked domains, i.e. domain and records
+    my @linked_domains = $self->domain()->list( { 'linked_template' => $tpl_id, } );
+    my $num_failed = 0;    # number of domains which failed to sync
+    foreach my $ldom (@linked_domains) {
+        my $ldom_id = $ldom->{'id'};
+        if ( $self->template_record()->sync_records( $tpl_id, $ldom_id ) ) {
+            $self->logger()->log( message => "Synced records from template #" . $tpl_id . " to linked domain #" . $ldom_id, level => 'debug', );
+        }
+        else {
+            $self->logger()->log( message => "Failed to sync recrods from template #" . $tpl_id . " to linked domain #" . $ldom_id, level => 'error', );
+            $num_failed++;
+        }
+    }
+
+    if ($num_failed) {
+        return;
+    }
+    else {
+        return 1;
+    }
 }
 
 no Moose;
