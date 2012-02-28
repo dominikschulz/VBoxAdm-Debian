@@ -109,6 +109,58 @@ sub _list_addn {
     return 1;
 }
 
+sub _get_domain_name {
+    my $self   = shift;
+    my $params = shift;
+
+    my $tpl_id = $params->{'tpl_id'};
+
+    my $domain_name = $self->template()->get_name($tpl_id);
+
+    $self->logger()->log( message => "Got domain-name: $domain_name from template id $tpl_id", level => 'debug', );
+
+    return $domain_name;
+}
+
+sub _get_domain_id {
+    my $self      = shift;
+    my $record_id = shift;
+
+    my $sql = "SELECT tpl_id FROM " . $self->table_name() . " WHERE id = ?";
+    my $sth = &VWebAdm::DB::prepexec( $self->dbh, $sql, $record_id );
+
+    if ( !$sth ) {
+        $self->logger()->log( message => 'Could not execute query ' . $sql . ' due to error: ' . $self->dbh()->errstr, level => 'error', );
+        $self->msg->push( 'error', 'Database error' );
+        return;
+    }
+    else {
+        my $domain_id = $sth->fetchrow_array();
+        $sth->finish();
+        return $domain_id;
+    }
+}
+
+sub get_tpl_id {
+    my $self      = shift;
+    my $record_id = shift;
+
+    return $self->_get_domain_id($record_id);
+}
+
+sub _is_authorized {
+    my $self   = shift;
+    my $action = shift;
+    my $params = shift;
+
+    if ( $self->user->is_siteadmin() ) {
+        return 1;
+    }
+    else {
+        return;
+    }
+}
+
 # after modifying a template record all linked domains should be updated immedeately to reflect any changes
 after 'update' => sub {
     my $self      = shift;
