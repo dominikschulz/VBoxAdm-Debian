@@ -1,0 +1,9 @@
+/var/log/vboxadm/vacation.log {
+        weekly
+        missingok
+        copytruncate
+        rotate 30
+        compress
+        notifempty
+}
+

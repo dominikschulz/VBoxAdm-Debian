@@ -1,0 +1,9 @@
+/var/log/vboxadm/sa.log {
+        daily
+        missingok
+        copytruncate
+        rotate 365
+        compress
+        notifempty
+}
+
