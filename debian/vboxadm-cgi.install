@@ -11,6 +11,7 @@ usr/lib/vwebadm/tpl/vboxadm/domain_alias/*
 usr/lib/vwebadm/tpl/vboxadm/includes/*
 usr/lib/vwebadm/tpl/vboxadm/mailbox/*
 usr/lib/vwebadm/tpl/vboxadm/rfc_notify/*
+usr/lib/vwebadm/tpl/vboxadm/role_account/*
 usr/lib/vwebadm/tpl/vboxadm/vacation_blacklist/*
 usr/lib/vwebadm/tpl/vboxadm/vacation_notify/*
 usr/share/man/man1/autodiscover.1
