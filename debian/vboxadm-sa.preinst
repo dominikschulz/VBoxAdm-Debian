@@ -9,7 +9,7 @@ case "$1" in
   upgrade)
     version=$2
     export LANG=C
-    invoke-rc.d --quiet vboxadm stop || true
+    invoke-rc.d --quiet vboxadm-sa stop || true
     ;;
   abort-upgrade)
     ;;
