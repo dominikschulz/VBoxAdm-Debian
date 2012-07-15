@@ -194,6 +194,8 @@ sub trim2 {
 
 {
 
+    # TODO see Email::Valid, maybe this could be used instead
+
     # RFC2822 email syntax
     my $local_part = qr"[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"i;
 
