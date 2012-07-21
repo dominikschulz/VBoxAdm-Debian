@@ -105,7 +105,7 @@ Description: Virtual Mail hosting management interface
 
 Package: vboxadm-vacation
 Architecture: all
-Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, debconf, postfix | mail-transfer-agent
+Depends: vboxadm-common (= ${binary:Version}), perl (>= 5.10), ${perl:Depends}, libconfig-std-perl, debconf, postfix | mail-transfer-agent, libmime-tools-perl, libemail-date-format-perl
 Recommends: postfix-mysql, mysql-server 
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
