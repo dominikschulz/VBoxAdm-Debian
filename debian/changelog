@@ -1,3 +1,11 @@
+vboxadm (0.2.25-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add required dependencies for vboxadm-vacation.
+  * Imported Upstream version 0.2.25
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sun, 29 Jul 2012 18:44:29 +0200
+
 vboxadm (0.2.24-1) unstable; urgency=low
 
   [ Dominik Schulz ]
