@@ -1,3 +1,11 @@
+vboxadm (0.2.27-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add missing dependencies for the new API.
+  * Imported Upstream version 0.2.27
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sun, 05 Aug 2012 14:11:51 +0200
+
 vboxadm (0.2.26-1) unstable; urgency=low
 
   [ Dominik Schulz ]
