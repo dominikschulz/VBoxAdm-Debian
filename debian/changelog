@@ -1,3 +1,11 @@
+vboxadm (0.2.30-1) unstable; urgency=low
+
+  [ Dominik Schulz ]
+  * Add missing DMARC controller.
+  * Imported Upstream version 0.2.30
+
+ -- Dominik Schulz (tex) <lkml@ds.gauner.org>  Sat, 18 Aug 2012 22:18:40 +0200
+
 vboxadm (0.2.29-1) unstable; urgency=low
 
   [ Dominik Schulz ]
