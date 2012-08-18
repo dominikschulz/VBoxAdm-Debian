@@ -4,7 +4,7 @@
 
 # some variables
 NAME = vboxadm
-VERSION = 0.2.28
+VERSION = 0.2.29
 BUILDDATE = $(shell date +%Y-%m-%d)
 WWWUSER ?= www-data
 WWWGROUP ?= www-data
@@ -64,8 +64,9 @@ BINFILES = \
 	cgi-bin/vdnsadm.fcgi \
 	cgi-bin/vdnsadm.pl \
 	cgi-bin/vdnsapi.pl \
-	cron/cleanup.pl \
 	cron/awl.pl \
+	cron/cleanup.pl \
+	cron/dmarc.pl \
 	cron/notify.pl \
 	cron/mailarchive.pl \
 	contrib/inst_deps.pl \
@@ -80,6 +81,7 @@ LIBFILES = \
 	lib/VBoxAdm/Controller/AWL.pm \
 	lib/VBoxAdm/Controller/Cleanup.pm \
 	lib/VBoxAdm/Controller/CLI.pm \
+	lib/VBoxAdm/Controller/DMARC.pm \
 	lib/VBoxAdm/Controller/Frontend.pm \
 	lib/VBoxAdm/Controller/Mailarchive.pm \
 	lib/VBoxAdm/Controller/Notify.pm \
@@ -101,6 +103,8 @@ LIBFILES = \
 	lib/VBoxAdm/L10N/zh.pm \
 	lib/VBoxAdm/Model/Alias.pm \
 	lib/VBoxAdm/Model/AWL.pm \
+	lib/VBoxAdm/Model/DMARCRecord.pm \
+	lib/VBoxAdm/Model/DMARCReport.pm \
 	lib/VBoxAdm/Model/Domain.pm \
 	lib/VBoxAdm/Model/DomainAlias.pm \
 	lib/VBoxAdm/Model/Mailbox.pm \
@@ -261,6 +265,8 @@ TPLFILES = \
 	tpl/vboxadm/alias/edit.tpl \
 	tpl/vboxadm/alias/list.tpl \
 	tpl/vboxadm/awl/list.tpl \
+	tpl/vboxadm/dmarc_report/list.tpl \
+	tpl/vboxadm/dmarc_report/show.tpl \
 	tpl/vboxadm/domain/create_partial.tpl \
 	tpl/vboxadm/domain/create.tpl \
 	tpl/vboxadm/domain/list.tpl \
@@ -449,6 +455,7 @@ real-install: all test rcvboxadm
 	$(INSTALL_CONF) conf/vdnsadm.conf.dist $(CFGDIR)/vdnsadm/vdnsadm.conf
 	$(INSTALL_PROGRAM) cron/awl.pl $(VBOXLIBDIR)/bin/awl
 	$(INSTALL_PROGRAM) cron/cleanup.pl $(VBOXLIBDIR)/bin/cleanup
+	$(INSTALL_PROGRAM) cron/dmarc.pl $(VBOXLIBDIR)/bin/dmarc
 	$(INSTALL_PROGRAM) cron/mailarchive.pl $(VBOXLIBDIR)/bin/mailarchive
 	$(INSTALL_PROGRAM) cron/notify.pl $(VBOXLIBDIR)/bin/notify
 	$(INSTALL_PROGRAM) contrib/munin/vboxadm_cache $(VBOXLIBDIR)/munin/vboxadm_cache
