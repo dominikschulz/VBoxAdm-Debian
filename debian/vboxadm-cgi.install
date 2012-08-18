@@ -24,6 +24,7 @@ usr/share/man/man8/cleanup.8
 usr/share/perl5/VBoxAdm/Controller/API.pm
 usr/share/perl5/VBoxAdm/Controller/Autodiscover.pm
 usr/share/perl5/VBoxAdm/Controller/Cleanup.pm
+usr/share/perl5/VBoxAdm/Controller/DMARC.pm
 usr/share/perl5/VBoxAdm/Controller/Frontend.pm
 usr/lib/vboxadm/bin/cleanup
 usr/lib/vboxadm/bin/dmarc
