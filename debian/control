@@ -10,7 +10,7 @@ Vcs-Browser: http://git.gauner.org/vboxadm-debian.git/
 
 Package: vboxadm
 Architecture: all
-Depends: vboxadm-cgi (= ${binary:Version}), vboxadm-sa (= ${binary:Version}), vboxadm-vacation (= ${binary:Version}), vboxadm-ma (= ${binary:Version})
+Depends: vboxadm-cgi (= ${binary:Version}), vboxadm-sa (= ${binary:Version}), vboxadm-vacation (= ${binary:Version})
 Recommends: postfix-mysql, mysql-server, postfix-pcre, postgrey
 Suggests: roundcube, roundcube-mysql, dovecot-common | courier-authlib-mysql
 Description: Virtual Mail hosting management interface
