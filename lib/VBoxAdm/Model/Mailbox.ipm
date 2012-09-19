@@ -45,7 +45,7 @@ sub create {
         'domain_id'      => $domain_id,
         'password'       => undef,
         'is_active'      => undef,
-        'name'           => '',
+        'name'           => q{},
         'sa_active'      => 1,
         'sa_kill_score'  => $self->config->{'cgi'}{'sa_default_block_score'} || 6.31,
         'is_domainadmin' => 0,
@@ -201,7 +201,7 @@ sub delete {
     my @args = ();
     push( @args, $mailbox_id );
     if ( !$self->user->is_siteadmin() && $self->user->is_domainadmin() ) {
-        $query .= "AND domain_id = ?";
+        $query .= ' AND domain_id = ?';
         push( @args, $self->user->get_domain_id() );
     }
     if ( $sth = &VWebAdm::DB::prepexec( $self->dbh, $query, @args ) ) {
@@ -278,7 +278,7 @@ sub update {
             $self->msg->push('warning', 'Please enter the same password twice');
         }
     } elsif(($params->{'Password'} && !$params->{'PasswordAgain'}) || (!$params->{'Password'} && $params->{'PasswordAgain'})) {
-        $self->msg->push( 'warning', 'Please enter password twice')
+        $self->msg->push( 'warning', 'Password mismatch. Please enter the same password twice.');
     }
 
     #
@@ -375,6 +375,9 @@ sub update {
     #
     # Vacation
     #
+    # we remember if the vacation was modified here,
+    # so we can cleanup later
+    my $vacation_was_modified = 0;
     # Is_On_Vacation / Vacation Msg
     if ( $params->{'IsOnVacation'} ) {
         if (   $params->{'VacationSubject'}
@@ -416,6 +419,7 @@ sub update {
         push( @args, $params->{'VacationSubject'} );
         push( @args, $params->{'VacationStart'} );
         push( @args, $params->{'VacationEnd'} );
+        $vacation_was_modified = 1;
     }
     else {
         $params->{'IsOnVacation'}  = 0;
@@ -425,6 +429,9 @@ sub update {
         push( @args, $params->{'IsOnVacation'} );
         push( @args, $params->{'VacationStart'} );
         push( @args, $params->{'VacationEnd'} );
+        # we must not set $vacation_was_modified here,
+        # since this is the default clause and would delete
+        # all notifications every time this user is updated
     }
 
     # at least on option has changed
@@ -434,7 +441,7 @@ sub update {
         $query =~ s/,\s*$//;
 
         # finialize query
-        $query .= " WHERE id = ?";
+        $query .= ' WHERE id = ?';
         push( @args, $mailbox_id );
 
         # if domainadmin, verify that its his domain
@@ -445,30 +452,49 @@ sub update {
         elsif ( $self->user->is_domainadmin() ) {
 
             # Domainadmin? - Only your domain please!
-            $query .= "AND domain_id = ?";
+            $query .= ' AND domain_id = ?';
             push( @args, $self->user->get_domain_id() );
         }
         elsif ( $self->user->is_user() ) {
 
             # Regular User? - Only your mailbox please!
-            $query .= "AND id = ?";
+            $query .= ' AND id = ?';
             push( @args, $self->user->get_id() );
         }
 
         #$self->log( "Mailox::update - SQL: ".$query. " - Args: ".join(',',@args));
         if ( my $sth = &VWebAdm::DB::prepexec( $self->dbh, $query, @args ) ) {
+            if($vacation_was_modified) {
+                $self->_remove_vacation_notifies($mailbox_name);
+            }
             $self->msg->push( 'information', "Updated Mailbox [_1] (#[_2]).", $mailbox_name, $mailbox_id );
             return 1;
         }
         else {
-            $self->logger()->log( 'Could not execute Query: ' . $query . ', Args: ' . join( "-", @args ) . ', Error: ' . $self->dbh()->errstr() );
-            $self->msg->push( 'error', "Failed to update Mailbox [_1] (#[_2]). Database Error.", $mailbox_name, $mailbox_id );
+            $self->logger()->log( 'Could not execute Query: ' . $query . ', Args: ' . join( q{-}, @args ) . ', Error: ' . $self->dbh()->errstr() );
+            $self->msg->push( 'error', 'Failed to update Mailbox [_1] (#[_2]). Database Error.', $mailbox_name, $mailbox_id );
             return;
         }
     }
     else {
         $self->msg->push( 'warning', 'No Parameter changed.' );
         return 1;
+    }
+}
+
+sub _remove_vacation_notifies {
+    my ( $self, $email ) = @_;
+    
+    my $sql = 'DELETE FROM vacation_notify WHERE on_vacation = ?';
+    my $sth = VWebAdm::DB::prepexec( $self->dbh, $sql, $email );
+    if($sth) {
+        my $rows = $sth->rows() || 0;
+        $self->logger()->log( message => 'Removed '.$rows.' vacation notifies for '.$email, level => 'debug', );
+        $sth->finish();
+        return 1;
+    } else {
+        $self->logger()->log( message => 'Failed to remove vacation notifies for '.$email.'. Query '.$sql.' failed w/ error: '.$self->dbh()->errstr, level => 'debug', );
+        return;
     }
 }
 
